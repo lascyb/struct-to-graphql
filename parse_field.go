@@ -1,0 +1,68 @@
+package graphql
+
+import (
+	"reflect"
+	"slices"
+
+	"github.com/lascyb/tagkit"
+)
+
+type FieldParser struct {
+	source     reflect.StructField
+	TypeParser *TypeParser
+	TypeName   string
+	Inline     bool
+	FieldName  string
+	TagValue   *tagkit.TagValue
+}
+
+func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
+	tagValue, err := parseFieldTagValue(field.Tag)
+	if err != nil {
+		return nil, err
+	}
+	fieldName := field.Name
+	if tagValue != nil {
+		if tagValue.FieldName != "" {
+			fieldName = tagValue.FieldName
+		}
+	}
+	fieldType := field.Type
+	if field.Type.Kind() == reflect.Ptr || field.Type.Kind() == reflect.Slice {
+		fieldType = field.Type.Elem()
+	}
+
+	var typeParser *TypeParser = nil
+	if fieldType.Kind() == reflect.Struct {
+		typeParser, err = p.ParseType(fieldType)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &FieldParser{
+		source:     field,
+		TypeParser: typeParser,
+		TypeName:   fieldType.Name(),
+		FieldName:  fieldName,
+		TagValue:   tagValue,
+		Inline:     field.Anonymous || (tagValue != nil && slices.Contains(tagValue.Flags, "inline")),
+	}, nil
+}
+
+func parseFieldTagValue(tag reflect.StructTag) (*tagkit.TagValue, error) {
+	value, ok := tag.Lookup("graphql")
+	if !ok {
+		value, ok = tag.Lookup("json")
+		if ok {
+			tagValue, err := tagkit.ParseValue(value)
+			if err != nil {
+				return nil, err
+			}
+			return &tagkit.TagValue{
+				FieldName: tagValue.FieldName,
+			}, nil
+		}
+	}
+	return tagkit.ParseValue(value)
+}
