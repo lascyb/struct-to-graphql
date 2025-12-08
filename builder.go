@@ -28,7 +28,7 @@ func (g *Builder) Build(typeParser *TypeParser) (string, error) {
 	if typeParser != nil {
 		return g.buildSelectionSet(typeParser, false, typeParser.Union, 0)
 	}
-	return "", fmt.Errorf("要解析的结构体不能是 nil")
+	return "", fmt.Errorf("struct to parse cannot be nil")
 }
 
 // buildSelectionSet 递归生成 GraphQL 类型定义字符串
@@ -79,18 +79,18 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 				// 联合类型的其他字段使用 "... on TypeName" 语法
 				buf.WriteString("... on ")
 				if field.TypeParser.source.Name() == "" {
-					return "", fmt.Errorf("联合类型中的字段[%s]暂不支持匿名结构体类型", field.FieldName)
+					return "", fmt.Errorf("anonymous struct types are not supported for field [%s] in union types", field.FieldName)
 				}
 				buf.WriteString(field.TypeParser.source.Name())
 				buf.WriteString(" ")
 				// 递归构建子类型，标记为联合子类型以保持花括号
 				set, err := g.buildSelectionSet(field.TypeParser, field.Inline, true, level+1)
 				if err != nil {
-					return "", fmt.Errorf("字段[%s]类型构建失败：%w", field.FieldName, err)
+					return "", fmt.Errorf("failed to build type for field [%s]: %w", field.FieldName, err)
 				}
 				buf.WriteString(set)
 			} else {
-				return "", fmt.Errorf("联合类型[%s]的字段[%s]，应该是结构体类型", typeParser.source.String(), field.FieldName)
+				return "", fmt.Errorf("field [%s] in union type [%s] should be a struct type", field.FieldName, typeParser.source.String())
 			}
 			continue
 		}
@@ -98,7 +98,7 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 		if field.Inline {
 			set, err := g.buildSelectionSet(field.TypeParser, true, false, level)
 			if err != nil {
-				return "", fmt.Errorf("字段[%s]类型构建失败：%w", field.FieldName, err)
+				return "", fmt.Errorf("failed to build type for field [%s]: %w", field.FieldName, err)
 			}
 			buf.WriteString(set)
 		} else {
@@ -111,7 +111,7 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 			// 递归构建嵌套类型，层级递增
 			set, err := g.buildSelectionSet(field.TypeParser, false, false, level+1)
 			if err != nil {
-				return "", fmt.Errorf("字段[%s]类型构建失败：%w", field.FieldName, err)
+				return "", fmt.Errorf("failed to build type for field [%s]: %w", field.FieldName, err)
 			}
 			buf.WriteString(set)
 		}

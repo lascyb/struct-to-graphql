@@ -1,15 +1,15 @@
 # go-struct-to-graphql
 
-[English](README-EN.md) | 中文
+English | [中文](README.md)
 
-一个将 Go 结构体自动转换为 GraphQL 查询字符串的包。通过类型安全的结构体定义，告别手动拼接 GraphQL 查询。
+A package that automatically converts Go structs to GraphQL query strings. Say goodbye to manually concatenating GraphQL queries with type-safe struct definitions.
 
-## 安装
+## Installation
 ```bash
 go get github.com/lascyb/struct-to-graphql
 ```
 
-## 快速上手
+## Quick Start
 ```go
 import (
 	graphql "github.com/lascyb/struct-to-graphql"
@@ -26,23 +26,23 @@ type Query struct {
 		Nodes []struct {
 			Name string `graphql:"name"`
 		} `graphql:"nodes"`
-	} `graphql:"list(first:10,query:$,id:$id)"` // 支持参数占位符，$ 表示匿名占位符，会根据层级自动生成变量名：$list_query
+	} `graphql:"list(first:10,query:$,id:$id)"` // Supports parameter placeholders, $ represents anonymous placeholder, automatically generates variable names based on hierarchy: $list_query
 }
 
 
 func main() {
 	q, _ := graphql.Marshal(Query{})
-	fmt.Println(strings.Repeat("-", 15), "查询体", strings.Repeat("-", 15))
-	fmt.Println(q.Body) // 打印查询体
-	fmt.Println(strings.Repeat("-", 15), "占位符变量列表", strings.Repeat("-", 15))
+	fmt.Println(strings.Repeat("-", 15), "Query Body", strings.Repeat("-", 15))
+	fmt.Println(q.Body) // Print query body
+	fmt.Println(strings.Repeat("-", 15), "Placeholder Variables", strings.Repeat("-", 15))
 	for _, variable := range q.Variables {
-		fmt.Println("Name:", variable.Name, ",Path:", variable.Path) // 占位符变量列表
+		fmt.Println("Name:", variable.Name, ",Path:", variable.Path) // Placeholder variable list
 	}
-	fmt.Println(strings.Repeat("-", 15), "去重生成的 Fragment", strings.Repeat("-", 15))
+	fmt.Println(strings.Repeat("-", 15), "Deduplicated Fragments", strings.Repeat("-", 15))
 	for _, fragment := range q.Fragments {
-		fmt.Println(fragment.Body) // 去重生成的 Fragment
+		fmt.Println(fragment.Body) // Deduplicated generated Fragments
 	}
---------------- 查询体 ---------------
+--------------- Query Body ---------------
 {
   field1
   list(first: 10, query: $list_query, id: $id){
@@ -53,18 +53,18 @@ func main() {
     }
   }
 }
---------------- 占位符变量列表 ---------------
+--------------- Placeholder Variables ---------------
 Name: $list_query ,Path: [list]
 Name: $id ,Path: [list]
---------------- 去重生成的 Fragment ---------------
+--------------- Deduplicated Fragments ---------------
 fragment MainFoo on Foo{
   bar
 }
 
 ```
 
-### 生成示例（同 [test/main.go](./test/main.go)）
-使用测试里的 `TestStruct`：
+### Generation Example (same as [test/main.go](./test/main.go))
+Using `TestStruct` from the tests:
 
 ```go
 type TestStruct struct {
@@ -79,8 +79,8 @@ type TestStruct struct {
 }
 ```
 
-### 典型输出：
-#### 请求主体
+### Typical Output:
+#### Request Body
 ```text
 {
   field1
@@ -139,16 +139,17 @@ fragment MainLineItemConnect on LineItemConnect{
 }
 ```
 
-## 标签规则(参考[tagkit](https://github.com/lascyb/tagkit))
-- `graphql:"fieldName"`：指定字段名；未提供时回退到 `json` 标签，再回退到字段名。
-- `graphql:"fieldName,inline"`：内联展开匿名或标记字段。
-- `graphql:"__typename,union"`：标记联合类型分支，生成 inline fragment。
-- `graphql:"field(arg1:1,arg2:$,arg3:$value3,...)"`：支持参数，值中 `$` 作为占位符自动生成变量名，可用 `query:$custom` 指定变量名。
+## Tag Rules (refer to [tagkit](https://github.com/lascyb/tagkit))
+- `graphql:"fieldName"`: Specifies the field name; falls back to `json` tag if not provided, then to the field name.
+- `graphql:"fieldName,inline"`: Inline expansion of anonymous or tagged fields.
+- `graphql:"__typename,union"`: Marks union type branches, generates inline fragments.
+- `graphql:"field(arg1:1,arg2:$,arg3:$value3,...)"`: Supports parameters, `$` in values acts as a placeholder that automatically generates variable names, use `query:$custom` to specify a custom variable name.
 
-## 输出结构
-- `Graphql.Body`：完整查询体字符串。
-- `Graphql.Variables`：占位符变量列表（Name 为 `$xxx`，Path 表示层级路径）。
-- `Graphql.Fragments`：去重生成的 Fragment 定义。
+## Output Structure
+- `Graphql.Body`: Complete query body string.
+- `Graphql.Variables`: Placeholder variable list (Name is `$xxx`, Path represents the hierarchical path).
+- `Graphql.Fragments`: Deduplicated generated Fragment definitions.
 
-## 格式化
-默认缩进为两个空格，可通过 `graphql.SetIndent("    ")` 覆盖。
+## Formatting
+Default indentation is two spaces, can be overridden with `graphql.SetIndent("    ")`.
+

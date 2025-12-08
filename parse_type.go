@@ -21,7 +21,7 @@ func (p *Parser) ParseType(typ reflect.Type) (*TypeParser, error) {
 		if typeName == "" {
 			typeName = typ.String()
 		}
-		return nil, fmt.Errorf("graphql: 检测到类型 %s 的循环引用", typeName)
+		return nil, fmt.Errorf("graphql: circular reference detected for type %s", typeName)
 	}
 
 	// 标记为正在访问
@@ -34,7 +34,7 @@ func (p *Parser) ParseType(typ reflect.Type) (*TypeParser, error) {
 		typ = typ.Elem()
 	}
 	if typ.Kind() != reflect.Struct {
-		return nil, errors.New("必须是结构体类型才需要转换")
+		return nil, errors.New("must be a struct type to convert")
 	}
 	if v, ok := p.types[typ]; ok {
 		v.Reused++

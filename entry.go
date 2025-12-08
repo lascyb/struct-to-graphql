@@ -29,7 +29,7 @@ type Fragment struct {
 
 func Marshal(v any) (*Graphql, error) {
 	if v == nil {
-		return nil, errors.New("要解析的结构体不能是 nil")
+		return nil, errors.New("struct to parse cannot be nil")
 	}
 	parser, err := NewParser().ParseType(reflect.TypeOf(v))
 	if err != nil {
