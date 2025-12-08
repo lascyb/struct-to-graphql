@@ -48,6 +48,10 @@ type Tree1 struct {
 	Union1Field1 Union  `json:"union1Field1" graphql:"union1Field1"`
 	Tree1Field1  string `json:"tree1Field1" graphql:"tree1Field1"`
 	Tree1Field2  Tree2  `json:"tree1Field2" graphql:"tree1Field2"`
+
+	//Inline1 Inline `json:"inline1" graphql:"inline1"`
+	//Inline2 Inline `json:"inline2" graphql:"inline2"`
+	Inline
 }
 type Tree2 struct {
 	Tree2Field1 string          `json:"tree2Field1" graphql:"tree2Field1"`
@@ -64,6 +68,10 @@ type TestStruct struct {
 	anonymityField1 string
 	TreeField       Tree `json:"tree" graphql:"tree"`
 	Test
+	Anonymous1 struct {
+		Field1 string `json:"field1" graphql:"field1"`
+	} `json:"anonymity1" graphql:"anonymity1"`
+	Fragment `json:"anonymity2" graphql:"anonymity2,inline"`
 }
 type Test struct {
 	anonymityField1 string
@@ -79,6 +87,7 @@ type Query struct {
 }
 
 func main() {
+	//exec, err := graphql.Marshal(Query{})
 	exec, err := graphql.Marshal(TestStruct{})
 	if err != nil {
 		panic(err)
@@ -90,9 +99,4 @@ func main() {
 	for _, variable := range exec.Variables {
 		fmt.Println(variable)
 	}
-	//marshal, err := json.Marshal(exec)
-	//if err != nil {
-	//	return
-	//}
-	//fmt.Println(string(marshal))
 }

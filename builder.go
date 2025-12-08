@@ -24,11 +24,11 @@ func NewBuilder() *Builder {
 	}
 }
 
-func (g *Builder) Build(typeParser *TypeParser) string {
+func (g *Builder) Build(typeParser *TypeParser) (string, error) {
 	if typeParser != nil {
 		return g.buildSelectionSet(typeParser, false, typeParser.Union, 0)
 	}
-	return ""
+	return "", fmt.Errorf("要解析的结构体不能是 nil")
 }
 
 // buildSelectionSet 递归生成 GraphQL 类型定义字符串
@@ -39,15 +39,20 @@ func (g *Builder) Build(typeParser *TypeParser) string {
 // level: 缩进层级，用于格式化输出，0 表示顶级，每递归一层递增
 // path: 当前字段路径，用于参数变量名生成
 // 返回: GraphQL 类型定义字符串，格式如 "{ field1 { nestedField } field2 }" 或 "... on TypeName { field }"
-func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionSubType bool, level uint) string {
+func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionSubType bool, level uint) (string, error) {
 	if typeParser == nil {
-		return ""
+		return "", nil
 	}
 	if typeParser.Reused > 1 {
 		if fragment, ok := g.fragmentMap[typeParser.source]; ok {
-			return fmt.Sprintf("{ ...%s }", fragment.Name)
+			if inlineType {
+				return fmt.Sprintf("\n%s...%s", indentWithLevel(level+1), fragment.Name), nil
+			}
+			return fmt.Sprintf("{ ...%s }", fragment.Name), nil
 		}
-		level = 0
+		if !inlineType {
+			level = 0
+		}
 	}
 	buf := new(strings.Builder)
 
@@ -70,19 +75,32 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 			// __typename 字段直接输出，用于类型判断
 			if field.FieldName == "__typename" {
 				buf.WriteString(field.FieldName)
-			} else {
+			} else if field.TypeParser != nil {
 				// 联合类型的其他字段使用 "... on TypeName" 语法
 				buf.WriteString("... on ")
+				if field.TypeParser.source.Name() == "" {
+					return "", fmt.Errorf("联合类型中的字段[%s]暂不支持匿名结构体类型", field.FieldName)
+				}
 				buf.WriteString(field.TypeParser.source.Name())
 				buf.WriteString(" ")
 				// 递归构建子类型，标记为联合子类型以保持花括号
-				buf.WriteString(g.buildSelectionSet(field.TypeParser, field.Inline, true, level+1))
+				set, err := g.buildSelectionSet(field.TypeParser, field.Inline, true, level+1)
+				if err != nil {
+					return "", fmt.Errorf("字段[%s]类型构建失败：%w", field.FieldName, err)
+				}
+				buf.WriteString(set)
+			} else {
+				return "", fmt.Errorf("联合类型[%s]的字段[%s]，应该是结构体类型", typeParser.source.String(), field.FieldName)
 			}
 			continue
 		}
 		// 处理内联字段：直接展开字段内容，不添加字段名
 		if field.Inline {
-			buf.WriteString(g.buildSelectionSet(field.TypeParser, true, false, level))
+			set, err := g.buildSelectionSet(field.TypeParser, true, false, level)
+			if err != nil {
+				return "", fmt.Errorf("字段[%s]类型构建失败：%w", field.FieldName, err)
+			}
+			buf.WriteString(set)
 		} else {
 			// 处理普通字段：添加字段名和适当缩进
 			buf.WriteString("\n")
@@ -91,7 +109,11 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 			// 构建字段参数
 			buf.WriteString(g.buildFieldArgs(field))
 			// 递归构建嵌套类型，层级递增
-			buf.WriteString(g.buildSelectionSet(field.TypeParser, false, false, level+1))
+			set, err := g.buildSelectionSet(field.TypeParser, false, false, level+1)
+			if err != nil {
+				return "", fmt.Errorf("字段[%s]类型构建失败：%w", field.FieldName, err)
+			}
+			buf.WriteString(set)
 		}
 	}
 	if len(g.currentPaths) > currentPathsCount {
@@ -119,10 +141,10 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 				Type: fragmentType,
 				Body: fragment,
 			}
-			return fmt.Sprintf("{ ...%s }", fragmentName)
+			return fmt.Sprintf("{ ...%s }", fragmentName), nil
 		}
 	}
-	return buf.String()
+	return buf.String(), nil
 }
 
 // buildFieldArgs 构建字段参数字符串，返回形如 "(a: 1, b: $x)" 的片段

@@ -11,7 +11,6 @@ type TypeParser struct {
 	source reflect.Type
 	Fields []*FieldParser
 	Union  bool
-
 	Reused uint
 }
 

@@ -1,6 +1,7 @@
 package graphql
 
 import (
+	"errors"
 	"maps"
 	"reflect"
 	"slices"
@@ -27,13 +28,19 @@ type Fragment struct {
 }
 
 func Marshal(v any) (*Graphql, error) {
+	if v == nil {
+		return nil, errors.New("要解析的结构体不能是 nil")
+	}
 	parser, err := NewParser().ParseType(reflect.TypeOf(v))
 	if err != nil {
 		return nil, err
 	}
 
 	builder := NewBuilder()
-	body := builder.Build(parser)
+	body, err := builder.Build(parser)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Graphql{
 		Body:      body,
