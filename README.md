@@ -8,22 +8,56 @@ go get github.com/lascyb/struct-to-graphql
 
 ## 快速上手
 ```go
+import (
+	graphql "github.com/lascyb/struct-to-graphql"
+)
+
+type Foo struct {
+	Bar string `graphql:"bar"`
+}
 type Query struct {
 	Field1 string `graphql:"field1"`
-	// 支持参数占位符，$ 表示匿名占位符，自动生成变量名
-	List struct {
+	List   struct {
+		Foo1  Foo `graphql:"foo1"`
+		Foo2  Foo `graphql:"foo2"`
 		Nodes []struct {
 			Name string `graphql:"name"`
 		} `graphql:"nodes"`
-	} `graphql:"list(first:10,query:$,id:$id)"`
+	} `graphql:"list(first:10,query:$,id:$id)"` // 支持参数占位符，$ 表示匿名占位符，会根据层级自动生成变量名：$list_query
 }
+
 
 func main() {
 	q, _ := graphql.Marshal(Query{})
-	fmt.Println(q.Body)       // 打印查询体
-	fmt.Println(q.Variables)  // 占位符变量列表
-	fmt.Println(q.Fragments)  // 去重生成的 Fragment
+	fmt.Println(strings.Repeat("-", 15), "查询体", strings.Repeat("-", 15))
+	fmt.Println(q.Body) // 打印查询体
+	fmt.Println(strings.Repeat("-", 15), "占位符变量列表", strings.Repeat("-", 15))
+	for _, variable := range q.Variables {
+		fmt.Println("Name:", variable.Name, ",Path:", variable.Path) // 占位符变量列表
+	}
+	fmt.Println(strings.Repeat("-", 15), "去重生成的 Fragment", strings.Repeat("-", 15))
+	for _, fragment := range q.Fragments {
+		fmt.Println(fragment.Body) // 去重生成的 Fragment
+	}
+--------------- 查询体 ---------------
+{
+  field1
+  list(first: 10, query: $list_query, id: $id){
+    foo1{ ...MainFoo }
+    foo2{ ...MainFoo }
+    nodes{
+      name
+    }
+  }
 }
+--------------- 占位符变量列表 ---------------
+Name: $list_query ,Path: [list]
+Name: $id ,Path: [list]
+--------------- 去重生成的 Fragment ---------------
+fragment MainFoo on Foo{
+  bar
+}
+
 ```
 
 ### 生成示例（同 [test/main.go](./test/main.go)）
