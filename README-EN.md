@@ -142,6 +142,7 @@ fragment MainLineItemConnect on LineItemConnect{
 ## Tag Rules (refer to [tagkit](https://github.com/lascyb/tagkit))
 - `graphql:"fieldName"`: Specifies the field name; falls back to `json` tag if not provided, then to the field name.
 - `graphql:"fieldName,inline"`: Inline expansion of anonymous or tagged fields.
+- `graphql:"fieldName,alias=aliasName"`: Sets a GraphQL alias for the field, rendered as `aliasName: fieldName`.
 - `graphql:"__typename,union"`: Marks union type branches, generates inline fragments.
 - `graphql:"field(arg1:1,arg2:$,arg3:$value3,...)"`: Supports parameters, `$` in values acts as a placeholder that automatically generates variable names, use `query:$custom` to specify a custom variable name.
 

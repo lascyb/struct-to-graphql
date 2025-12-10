@@ -28,6 +28,7 @@ type Union struct {
 }
 type Fragment struct {
 	FragmentField1 string `json:"fragmentField1" graphql:"fragmentField1"`
+	FragmentField2 string `json:"fragmentField2_alias1" graphql:"fragmentField1,alias=fragmentField2_alias1"`
 }
 type LineItem struct {
 	LineItemField1 string `json:"lineItemField1" graphql:"lineItemField1"`
@@ -37,9 +38,10 @@ type LineItemConnect struct {
 }
 type Inline struct {
 	InlineField1 string `json:"inlineField1" graphql:"inlineField1"`
+	InlineField2 string `json:"inline_alias2" graphql:"inlineField2,alias=inline_alias2"`
 }
 type Inline2 struct {
-	InlineField2 string `json:"inlineField2" graphql:"inlineField2"`
+	Inline2Field2 string `json:"inlineField2" graphql:"inlineField2"`
 }
 type Tree struct {
 	Tree1 Tree1 `json:"tree1" graphql:"tree1"`
@@ -48,8 +50,7 @@ type Tree1 struct {
 	Union1Field1 Union  `json:"union1Field1" graphql:"union1Field1"`
 	Tree1Field1  string `json:"tree1Field1" graphql:"tree1Field1"`
 	Tree1Field2  Tree2  `json:"tree1Field2" graphql:"tree1Field2"`
-
-	//Inline1 Inline `json:"inline1" graphql:"inline1"`
+	Inline1      Inline `json:"inline2" graphql:"inline1,alias=inline2"`
 	//Inline2 Inline `json:"inline2" graphql:"inline2"`
 	Inline
 }
@@ -62,16 +63,16 @@ type TestStruct struct {
 	Fragment1  Fragment        `json:"fragment1" graphql:"fragment1"`
 	Fragment2  Fragment        `json:"fragment2" graphql:"fragment2"`
 	UnionField Union           `json:"unionField" graphql:"unionField"`
-	LineItem   LineItemConnect `json:"lineItem" graphql:"lineItem(first:10,query:$)"`
+	LineItem   LineItemConnect `json:"lineItem_alias1" graphql:"lineItem(first:10,query:$),alias=lineItem_alias1"`
 	Inline
 	Inline2         Inline2 `json:"inline2" graphql:"inline2,inline"`
 	anonymityField1 string
 	TreeField       Tree `json:"tree" graphql:"tree"`
 	Test
 	Anonymous1 struct {
-		Field1 string `json:"field1" graphql:"field1"`
+		Field1 string `json:"alias2" graphql:"field1,alias=alias2"`
 	} `json:"anonymity1" graphql:"anonymity1"`
-	Fragment `json:"anonymity2" graphql:"anonymity2,inline"`
+	Fragment `json:"alias1" graphql:"anonymity2,inline,alias=alias1"`
 }
 type Test struct {
 	anonymityField1 string

@@ -142,6 +142,7 @@ fragment MainLineItemConnect on LineItemConnect{
 ## 标签规则(参考[tagkit](https://github.com/lascyb/tagkit))
 - `graphql:"fieldName"`：指定字段名；未提供时回退到 `json` 标签，再回退到字段名。
 - `graphql:"fieldName,inline"`：内联展开匿名或标记字段。
+- `graphql:"fieldName,alias=aliasName"`：为字段设置 GraphQL 别名，最终渲染为 `aliasName: fieldName`。
 - `graphql:"__typename,union"`：标记联合类型分支，生成 inline fragment。
 - `graphql:"field(arg1:1,arg2:$,arg3:$value3,...)"`：支持参数，值中 `$` 作为占位符自动生成变量名，可用 `query:$custom` 指定变量名。
 

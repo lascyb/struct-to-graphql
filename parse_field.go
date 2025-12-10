@@ -26,6 +26,11 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 		if tagValue.FieldName != "" {
 			fieldName = tagValue.FieldName
 		}
+		if slices.Contains(tagValue.Flags, "alias") {
+			if alias, ok := tagValue.FlagValues["alias"]; ok && alias != "" {
+				fieldName = alias + ":" + fieldName
+			}
+		}
 	}
 	fieldType := field.Type
 	if field.Type.Kind() == reflect.Ptr || field.Type.Kind() == reflect.Slice {
