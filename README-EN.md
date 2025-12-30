@@ -32,6 +32,8 @@ type Query struct {
 
 func main() {
 	q, _ := graphql.Marshal(Query{})
+	
+	// Method 1: Get each part separately
 	fmt.Println(strings.Repeat("-", 15), "Query Body", strings.Repeat("-", 15))
 	fmt.Println(q.Body) // Print query body
 	fmt.Println(strings.Repeat("-", 15), "Placeholder Variables", strings.Repeat("-", 15))
@@ -42,6 +44,11 @@ func main() {
 	for _, fragment := range q.Fragments {
 		fmt.Println(fragment.Body) // Deduplicated generated Fragments
 	}
+	
+	// Method 2: Use Query method to assemble complete query
+	query, _ := q.Query("GetData")
+	fmt.Println(strings.Repeat("-", 15), "Complete Query", strings.Repeat("-", 15))
+	fmt.Println(query)
 --------------- Query Body ---------------
 {
   field1
@@ -59,6 +66,20 @@ Name: $id ,Type: Int! ,Paths: [list]
 --------------- Deduplicated Fragments ---------------
 fragment MainFoo on Foo{
   bar
+}
+--------------- Complete Query ---------------
+fragment MainFoo on Foo{
+  bar
+}
+query GetData(list_query: String!, id: Int!) {
+  field1
+  list(first: 10, query: $list_query, id: $id){
+    foo1{ ...MainFoo }
+    foo2{ ...MainFoo }
+    nodes{
+      name
+    }
+  }
 }
 
 ```
@@ -151,6 +172,7 @@ fragment MainLineItemConnect on LineItemConnect{
 - `Graphql.Body`: Complete query body string.
 - `Graphql.Variables`: Placeholder variable list (Name is `$xxx`, Path represents the hierarchical path, Type is the variable type such as `String!`, `Int!`).
 - `Graphql.Fragments`: Deduplicated generated Fragment definitions.
+- `Graphql.Query(name string)`: Assembles a complete GraphQL query string, including operation declaration, variable definitions, query body, and Fragments.
 
 ## Formatting
 Default indentation is two spaces, can be overridden with `graphql.SetIndent("    ")`.
@@ -164,9 +186,9 @@ Default indentation is two spaces, can be overridden with `graphql.SetIndent("  
 - [x] **Inline Fragments** - Union type support, automatically generated using `union` flag
 - [x] **Meta fields** - Support for `__typename` field
 - [ ] **Directives** - Directive support (e.g., `@include`, `@skip`, etc.)
-- [ ] **Operation type and name** - Support for generating complete operation declarations (e.g., `query GetUser { ... }`)
+- [x] **Operation type and name** - Support for generating complete operation declarations (e.g., `query GetUser { ... }`), via `Query(name)` method
 - [x] **Variable types** - Support for specifying variable types (e.g., `$query:String!`, `$id:Int!`)
-- [ ] **Variable definitions** - Support for generating variable definitions (e.g., `($episode: Episode)`)
+- [x] **Variable definitions** - Support for generating variable definitions (e.g., `($episode: Episode)`), automatically generated via `Query(name)` method
 - [ ] **Default variables** - Support for variable default values (e.g., `$episode: Episode = JEDI`)
 - [ ] **Mutations** - Support for generating mutation operations
 - [ ] **Subscriptions** - Support for generating subscription operations

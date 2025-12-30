@@ -101,4 +101,7 @@ func main() {
 	for _, variable := range exec.Variables {
 		fmt.Println(variable.Name, "|", variable.Type, "|", strings.Join(variable.Paths, ","))
 	}
+	fmt.Println("=== 完整查询 ===")
+	query, _ := exec.Query("GetData")
+	fmt.Println(query)
 }

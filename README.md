@@ -32,6 +32,8 @@ type Query struct {
 
 func main() {
 	q, _ := graphql.Marshal(Query{})
+	
+	// 方式1：分别获取各部分
 	fmt.Println(strings.Repeat("-", 15), "查询体", strings.Repeat("-", 15))
 	fmt.Println(q.Body) // 打印查询体
 	fmt.Println(strings.Repeat("-", 15), "占位符变量列表", strings.Repeat("-", 15))
@@ -42,6 +44,11 @@ func main() {
 	for _, fragment := range q.Fragments {
 		fmt.Println(fragment.Body) // 去重生成的 Fragment
 	}
+	
+	// 方式2：使用 Query 方法组装完整查询
+	query, _ := q.Query("GetData")
+	fmt.Println(strings.Repeat("-", 15), "完整查询", strings.Repeat("-", 15))
+	fmt.Println(query)
 --------------- 查询体 ---------------
 {
   field1
@@ -59,6 +66,20 @@ Name: $id ,Type: Int! ,Paths: [list]
 --------------- 去重生成的 Fragment ---------------
 fragment MainFoo on Foo{
   bar
+}
+--------------- 完整查询 ---------------
+fragment MainFoo on Foo{
+  bar
+}
+query GetData(list_query: String!, id: Int!) {
+  field1
+  list(first: 10, query: $list_query, id: $id){
+    foo1{ ...MainFoo }
+    foo2{ ...MainFoo }
+    nodes{
+      name
+    }
+  }
 }
 
 ```
@@ -145,12 +166,13 @@ fragment MainLineItemConnect on LineItemConnect{
 - `graphql:"fieldName,alias=aliasName"`：为字段设置 GraphQL 别名，最终渲染为 `aliasName: fieldName`(要注意json标签需要指定别名，如`json:"aliasName"`)。
 - `graphql:"__typename,union"`：标记联合类型分支，生成 inline fragment。
 - `graphql:"field(arg1:1,arg2:$,arg3:$value3,...)"`：支持参数，值中 `$` 作为占位符自动生成变量名，可用 `query:$custom` 指定变量名。
-- `grapql:"fiheld(arg:$:Type1,arg2:$varName:Type2)"`：支持为变量指定类型，格式为 `$:Type`（匿名占位符）或 `$varName:Type`（自定义变量名），如 `query:$:String!`、`id:$id:Int!`。
+- `graphql:"field(arg:$:Type1,arg2:$varName:Type2)"`：支持为变量指定类型，格式为 `$:Type`（匿名占位符）或 `$varName:Type`（自定义变量名），如 `query:$:String!`、`id:$id:Int!`。
 
 ## 输出结构
 - `Graphql.Body`：完整查询体字符串。
 - `Graphql.Variables`：占位符变量列表（Name 为 `$xxx`，Path 表示层级路径，Type 为变量类型如 `String!`、`Int!`）。
 - `Graphql.Fragments`：去重生成的 Fragment 定义。
+- `Graphql.Query(name string)`：组装完整的 GraphQL 查询字符串，包含操作声明、变量定义、查询体和 Fragments。
 
 ## 格式化
 默认缩进为两个空格，可通过 `graphql.SetIndent("    ")` 覆盖。
@@ -164,9 +186,9 @@ fragment MainLineItemConnect on LineItemConnect{
 - [x] **Inline Fragments（内联片段）** - 联合类型支持，使用 `__typename` 字段中的 `union` 标记自动生成
 - [x] **Meta fields（元字段）** - 支持 `__typename` 字段
 - [ ] **Directives（指令）** - 指令功能支持（如 `@include`、`@skip` 等）
-- [ ] **Operation type and name（操作类型和名称）** - 支持生成完整的操作声明（如 `query GetUser { ... }`）
+- [x] **Operation type and name（操作类型和名称）** - 支持生成完整的操作声明（如 `query GetUser { ... }`），通过 `Query(name)` 方法
 - [x] **Variable types（变量类型）** - 支持为变量指定类型（如 `$query:String!`、`$id:Int!`）
-- [ ] **Variable definitions（变量定义）** - 支持生成变量定义部分（如 `($episode: Episode)`）
+- [x] **Variable definitions（变量定义）** - 支持生成变量定义部分（如 `($episode: Episode)`），通过 `Query(name)` 方法自动生成
 - [ ] **Default variables（默认变量值）** - 支持变量默认值（如 `$episode: Episode = JEDI`）
 - [ ] **Mutations（变更）** - 支持生成 mutation 操作
 - [ ] **Subscriptions（订阅）** - 支持生成 subscription 操作
