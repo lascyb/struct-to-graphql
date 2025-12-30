@@ -16,8 +16,9 @@ type Graphql struct {
 
 // Variable GraphQL 变量
 type Variable struct {
-	Name string   // 变量名（如 "$nodes_fieldName_first"）
-	Path []string // 变量路径（如 "nodes.edges.node.first"）
+	Name  string   // 变量名（如 "$nodes_fieldName_first"）
+	Paths []string // 变量路径（如 "nodes.edges.node.first"）
+	Type  string   //变量类型（如 Int、Int!、String、String!）
 }
 
 // Fragment GraphQL Fragment
@@ -44,7 +45,7 @@ func Marshal(v any) (*Graphql, error) {
 
 	return &Graphql{
 		Body:      body,
-		Variables: builder.Variables,
+		Variables: slices.Collect(maps.Values(builder.variableMap)),
 		Fragments: slices.Collect(maps.Values(builder.fragmentMap)),
 	}, nil
 }

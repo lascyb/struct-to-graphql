@@ -1,8 +1,10 @@
 package graphql
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
+	"strings"
 
 	"github.com/lascyb/tagkit"
 )
@@ -13,7 +15,15 @@ type FieldParser struct {
 	TypeName   string
 	Inline     bool
 	FieldName  string
-	TagValue   *tagkit.TagValue
+	TagValue   *TagValue
+}
+type Arg struct {
+	*tagkit.Arg
+	Type string
+}
+type TagValue struct {
+	*tagkit.TagValue
+	Args map[string]*Arg
 }
 
 func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
@@ -45,12 +55,35 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 		}
 	}
 
+	var fieldTagValue *TagValue = nil
+
+	if tagValue != nil {
+		fieldTagValue = &TagValue{
+			TagValue: tagValue,
+			Args:     make(map[string]*Arg),
+		}
+		for s, arg := range tagValue.Args {
+			item := Arg{
+				Arg: arg,
+			}
+			strs := strings.SplitN(strings.TrimSpace(item.Value), ":", 2)
+			if strs[0] == "" {
+				return nil, fmt.Errorf("参数值不能定义为空")
+			}
+			item.Value = strs[0]
+			if len(strs) == 2 && strings.TrimSpace(strs[1]) != "" {
+				item.Type = strings.TrimSpace(strs[1])
+			}
+			fieldTagValue.Args[s] = &item
+		}
+	}
+
 	return &FieldParser{
 		source:     field,
 		TypeParser: typeParser,
 		TypeName:   fieldType.Name(),
 		FieldName:  fieldName,
-		TagValue:   tagValue,
+		TagValue:   fieldTagValue,
 		Inline:     field.Anonymous || (tagValue != nil && slices.Contains(tagValue.Flags, "inline")),
 	}, nil
 }

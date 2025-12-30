@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
-	"github.com/lascyb/struct-to-graphql"
+	graphql "github.com/lascyb/struct-to-graphql"
 )
 
 func init() {
@@ -56,14 +57,14 @@ type Tree1 struct {
 }
 type Tree2 struct {
 	Tree2Field1 string          `json:"tree2Field1" graphql:"tree2Field1"`
-	LineItem    LineItemConnect `json:"lineItem" graphql:"lineItem(first:10,query:$)"`
+	LineItem    LineItemConnect `json:"lineItem" graphql:"lineItem(first:10,query:$:String!)"`
 }
 type TestStruct struct {
 	Field1     string          `json:"field1" graphql:"field1"`
 	Fragment1  Fragment        `json:"fragment1" graphql:"fragment1"`
 	Fragment2  Fragment        `json:"fragment2" graphql:"fragment2"`
 	UnionField Union           `json:"unionField" graphql:"unionField"`
-	LineItem   LineItemConnect `json:"lineItem_alias1" graphql:"lineItem(first:10,query:$),alias=lineItem_alias1"`
+	LineItem   LineItemConnect `json:"lineItem_alias1" graphql:"lineItem(first:10,query:$:String!,id:$id:Int!),alias=lineItem_alias1"`
 	Inline
 	Inline2         Inline2 `json:"inline2" graphql:"inline2,inline"`
 	anonymityField1 string
@@ -84,7 +85,7 @@ type Query struct {
 		Nodes []struct {
 			Name string `graphql:"name"`
 		} `graphql:"nodes"`
-	} `graphql:"list(first:10,query:$,id:$id)"`
+	} `graphql:"list(first:10,query:$,id:$id:Int!)"`
 }
 
 func main() {
@@ -98,6 +99,6 @@ func main() {
 		fmt.Println(fragment.Body)
 	}
 	for _, variable := range exec.Variables {
-		fmt.Println(variable)
+		fmt.Println(variable.Name, "|", variable.Type, "|", strings.Join(variable.Paths, ","))
 	}
 }

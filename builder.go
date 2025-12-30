@@ -1,25 +1,23 @@
 package graphql
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
 	"unicode"
-
-	"github.com/lascyb/tagkit"
 )
 
 type Builder struct {
 	fragmentMap  map[reflect.Type]*Fragment // Fragment 映射，用于去重
-	variableMap  map[string]uint            // 变量映射，用于去重
-	Variables    []*Variable
+	variableMap  map[string]*Variable       // 变量映射，用于去重
 	currentPaths []string
 }
 
 func NewBuilder() *Builder {
 	return &Builder{
 		fragmentMap:  make(map[reflect.Type]*Fragment),
-		variableMap:  make(map[string]uint),
+		variableMap:  make(map[string]*Variable),
 		currentPaths: []string{},
 	}
 }
@@ -107,7 +105,11 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 			buf.WriteString(indentWithLevel(level + 1))
 			buf.WriteString(field.FieldName)
 			// 构建字段参数
-			buf.WriteString(g.buildFieldArgs(field))
+			args, err := g.buildFieldArgs(field)
+			if err != nil {
+				return "", err
+			}
+			buf.WriteString(args)
 			// 递归构建嵌套类型，层级递增
 			set, err := g.buildSelectionSet(field.TypeParser, false, false, level+1)
 			if err != nil {
@@ -148,14 +150,17 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 }
 
 // buildFieldArgs 构建字段参数字符串，返回形如 "(a: 1, b: $x)" 的片段
-func (g *Builder) buildFieldArgs(field *FieldParser) string {
+func (g *Builder) buildFieldArgs(field *FieldParser) (string, error) {
 	if field == nil || field.TagValue == nil || len(field.TagValue.Args) == 0 {
-		return ""
+		return "", nil
 	}
 
 	parts := make([]string, 0, len(field.TagValue.Args))
 	for name, arg := range field.TagValue.Args {
-		value := g.buildArgumentValue(arg)
+		value, err := g.buildArgumentValue(arg)
+		if err != nil {
+			return "", err
+		}
 		if value == "" {
 			continue
 		}
@@ -163,46 +168,45 @@ func (g *Builder) buildFieldArgs(field *FieldParser) string {
 	}
 
 	if len(parts) == 0 {
-		return ""
+		return "", nil
 	}
-	return fmt.Sprintf("(%s)", strings.Join(parts, ", "))
+	return fmt.Sprintf("(%s)", strings.Join(parts, ", ")), nil
 }
 
 // buildArgumentValue 根据占位符与自定义名生成参数值字符串
-func (g *Builder) buildArgumentValue(arg *tagkit.Arg) string {
+func (g *Builder) buildArgumentValue(arg *Arg) (string, error) {
 	if arg == nil {
-		return ""
+		return "", nil
 	}
+	s, _ := json.Marshal(arg)
+	fmt.Println(string(s))
 
 	if arg.Placeholder {
 		var varName string
 
-		if arg.CustomName != "" {
-			// 自定义名称
-			varName = arg.CustomName
-			if _, ok := g.variableMap[varName]; !ok {
-				g.Variables = append(g.Variables, &Variable{
-					Name: "$" + varName,
-					Path: g.currentPaths[:],
-				})
-			}
-		} else {
+		if arg.Value == "$" { //匿名占位符
 			// 匿名占位符，生成变量名（会在内部标记到 variableMap）
-			varName = strings.Join(g.currentPaths, "_") + "_" + arg.Name
-			if index, ok := g.variableMap[varName]; ok {
-				varName = fmt.Sprintf("%s_%d", varName, index+1)
-				g.variableMap[varName]++
-			} else {
-				g.variableMap[varName] = 0
-			}
-			// 收集变量到 Variables 数组（generateAnonymousArgName 已标记到 variableMap，这里直接添加）
-			g.Variables = append(g.Variables, &Variable{
-				Name: "$" + varName,
-				Path: g.currentPaths[:],
-			})
+			varName = strings.ReplaceAll(strings.Join(g.currentPaths, "_"), ":", "_") + "_" + arg.Name
+		} else {
+			varName = strings.TrimLeft(arg.Value, "$")
 		}
+		fmt.Println(g.currentPaths, varName)
+		if variable, ok := g.variableMap[varName]; ok {
+			//varName = fmt.Sprintf("%s_%d", varName, index+1)
+			if g.variableMap[varName].Type != variable.Type {
+				return "", fmt.Errorf("变量 %s 类型不统一：[%s]<==>[%s]", varName, g.variableMap[varName].Type, variable.Type)
+			}
+			g.variableMap[varName].Paths = append(g.variableMap[varName].Paths, strings.Join(g.currentPaths, "/"))
 
-		return "$" + varName
+		} else {
+			// 收集变量到 Variables 数组
+			g.variableMap[varName] = &Variable{
+				Name:  "$" + varName,
+				Paths: []string{strings.Join(g.currentPaths, "/")},
+				Type:  arg.Type,
+			}
+		}
+		return g.variableMap[varName].Name, nil
 	}
-	return arg.Value
+	return arg.Value, nil
 }
