@@ -26,7 +26,7 @@ type Query struct {
 		Nodes []struct {
 			Name string `graphql:"name"`
 		} `graphql:"nodes"`
-	} `graphql:"list(first:10,query:$,id:$id)"` // Supports parameter placeholders, $ represents anonymous placeholder, automatically generates variable names based on hierarchy: $list_query
+	} `graphql:"list(first:10,query:$:String!,id:$id:Int!)"` // Supports parameter placeholders and types, $ represents anonymous placeholder, automatically generates variable names based on hierarchy: $list_query, type is specified via :Type
 }
 
 
@@ -36,7 +36,7 @@ func main() {
 	fmt.Println(q.Body) // Print query body
 	fmt.Println(strings.Repeat("-", 15), "Placeholder Variables", strings.Repeat("-", 15))
 	for _, variable := range q.Variables {
-		fmt.Println("Name:", variable.Name, ",Path:", variable.Path) // Placeholder variable list
+		fmt.Println("Name:", variable.Name, ",Type:", variable.Type, ",Paths:", variable.Paths) // Placeholder variable list
 	}
 	fmt.Println(strings.Repeat("-", 15), "Deduplicated Fragments", strings.Repeat("-", 15))
 	for _, fragment := range q.Fragments {
@@ -54,8 +54,8 @@ func main() {
   }
 }
 --------------- Placeholder Variables ---------------
-Name: $list_query ,Path: [list]
-Name: $id ,Path: [list]
+Name: $list_query ,Type: String! ,Paths: [list]
+Name: $id ,Type: Int! ,Paths: [list]
 --------------- Deduplicated Fragments ---------------
 fragment MainFoo on Foo{
   bar
@@ -145,12 +145,28 @@ fragment MainLineItemConnect on LineItemConnect{
 - `graphql:"fieldName,alias=aliasName"`: Sets a GraphQL alias for the field, rendered as `aliasName: fieldName`. (Note: the json tag needs to specify the alias, such as `json:"aliasName"`)
 - `graphql:"__typename,union"`: Marks union type branches, generates inline fragments.
 - `graphql:"field(arg1:1,arg2:$,arg3:$value3,...)"`: Supports parameters, `$` in values acts as a placeholder that automatically generates variable names, use `query:$custom` to specify a custom variable name.
+- `graphql:"field(arg:$:Type1,arg2:$varName:Type2)"`: Supports specifying variable types, format is `$:Type` (anonymous placeholder) or `$varName:Type` (custom variable name), e.g., `query:$:String!`, `id:$id:Int!`.
 
 ## Output Structure
 - `Graphql.Body`: Complete query body string.
-- `Graphql.Variables`: Placeholder variable list (Name is `$xxx`, Path represents the hierarchical path).
+- `Graphql.Variables`: Placeholder variable list (Name is `$xxx`, Path represents the hierarchical path, Type is the variable type such as `String!`, `Int!`).
 - `Graphql.Fragments`: Deduplicated generated Fragment definitions.
 
 ## Formatting
 Default indentation is two spaces, can be overridden with `graphql.SetIndent("    ")`.
 
+## GraphQL Feature Support
+- [x] **Fields** - Query object fields with nested selection sets
+- [x] **Arguments** - Field arguments with static values and variable placeholders
+- [x] **Aliases** - Field aliases using `alias=aliasName` syntax
+- [x] **Variables** - Variable placeholders supporting `$` anonymous placeholders and custom variable names
+- [x] **Fragments** - Reusable fragments with automatic generation and deduplication
+- [x] **Inline Fragments** - Union type support, automatically generated using `union` flag
+- [x] **Meta fields** - Support for `__typename` field
+- [ ] **Directives** - Directive support (e.g., `@include`, `@skip`, etc.)
+- [ ] **Operation type and name** - Support for generating complete operation declarations (e.g., `query GetUser { ... }`)
+- [x] **Variable types** - Support for specifying variable types (e.g., `$query:String!`, `$id:Int!`)
+- [ ] **Variable definitions** - Support for generating variable definitions (e.g., `($episode: Episode)`)
+- [ ] **Default variables** - Support for variable default values (e.g., `$episode: Episode = JEDI`)
+- [ ] **Mutations** - Support for generating mutation operations
+- [ ] **Subscriptions** - Support for generating subscription operations

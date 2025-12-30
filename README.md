@@ -26,7 +26,7 @@ type Query struct {
 		Nodes []struct {
 			Name string `graphql:"name"`
 		} `graphql:"nodes"`
-	} `graphql:"list(first:10,query:$,id:$id)"` // 支持参数占位符，$ 表示匿名占位符，会根据层级自动生成变量名：$list_query
+	} `graphql:"list(first:10,query:$:String!,id:$id:Int!)"` // 支持参数占位符和类型，$ 表示匿名占位符，会根据层级自动生成变量名：$list_query，类型通过 :Type 指定
 }
 
 
@@ -36,7 +36,7 @@ func main() {
 	fmt.Println(q.Body) // 打印查询体
 	fmt.Println(strings.Repeat("-", 15), "占位符变量列表", strings.Repeat("-", 15))
 	for _, variable := range q.Variables {
-		fmt.Println("Name:", variable.Name, ",Path:", variable.Path) // 占位符变量列表
+		fmt.Println("Name:", variable.Name, ",Type:", variable.Type, ",Paths:", variable.Paths) // 占位符变量列表
 	}
 	fmt.Println(strings.Repeat("-", 15), "去重生成的 Fragment", strings.Repeat("-", 15))
 	for _, fragment := range q.Fragments {
@@ -54,8 +54,8 @@ func main() {
   }
 }
 --------------- 占位符变量列表 ---------------
-Name: $list_query ,Path: [list]
-Name: $id ,Path: [list]
+Name: $list_query ,Type: String! ,Paths: [list]
+Name: $id ,Type: Int! ,Paths: [list]
 --------------- 去重生成的 Fragment ---------------
 fragment MainFoo on Foo{
   bar
@@ -145,11 +145,28 @@ fragment MainLineItemConnect on LineItemConnect{
 - `graphql:"fieldName,alias=aliasName"`：为字段设置 GraphQL 别名，最终渲染为 `aliasName: fieldName`(要注意json标签需要指定别名，如`json:"aliasName"`)。
 - `graphql:"__typename,union"`：标记联合类型分支，生成 inline fragment。
 - `graphql:"field(arg1:1,arg2:$,arg3:$value3,...)"`：支持参数，值中 `$` 作为占位符自动生成变量名，可用 `query:$custom` 指定变量名。
+- `grapql:"fiheld(arg:$:Type1,arg2:$varName:Type2)"`：支持为变量指定类型，格式为 `$:Type`（匿名占位符）或 `$varName:Type`（自定义变量名），如 `query:$:String!`、`id:$id:Int!`。
 
 ## 输出结构
 - `Graphql.Body`：完整查询体字符串。
-- `Graphql.Variables`：占位符变量列表（Name 为 `$xxx`，Path 表示层级路径）。
+- `Graphql.Variables`：占位符变量列表（Name 为 `$xxx`，Path 表示层级路径，Type 为变量类型如 `String!`、`Int!`）。
 - `Graphql.Fragments`：去重生成的 Fragment 定义。
 
 ## 格式化
 默认缩进为两个空格，可通过 `graphql.SetIndent("    ")` 覆盖。
+
+## GraphQL 功能支持
+- [x] **Fields（字段）** - 查询对象字段，支持嵌套查询
+- [x] **Arguments（参数）** - 字段参数支持，支持静态值和变量占位符
+- [x] **Aliases（别名）** - 字段别名，使用 `alias=aliasName` 语法
+- [x] **Variables（变量）** - 变量占位符，支持 `$` 匿名占位符和自定义变量名
+- [x] **Fragments（片段）** - 可复用片段，自动生成和去重
+- [x] **Inline Fragments（内联片段）** - 联合类型支持，使用 `__typename` 字段中的 `union` 标记自动生成
+- [x] **Meta fields（元字段）** - 支持 `__typename` 字段
+- [ ] **Directives（指令）** - 指令功能支持（如 `@include`、`@skip` 等）
+- [ ] **Operation type and name（操作类型和名称）** - 支持生成完整的操作声明（如 `query GetUser { ... }`）
+- [x] **Variable types（变量类型）** - 支持为变量指定类型（如 `$query:String!`、`$id:Int!`）
+- [ ] **Variable definitions（变量定义）** - 支持生成变量定义部分（如 `($episode: Episode)`）
+- [ ] **Default variables（默认变量值）** - 支持变量默认值（如 `$episode: Episode = JEDI`）
+- [ ] **Mutations（变更）** - 支持生成 mutation 操作
+- [ ] **Subscriptions（订阅）** - 支持生成 subscription 操作

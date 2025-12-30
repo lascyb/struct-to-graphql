@@ -28,18 +28,32 @@ func TestMarshalGeneratesExpectedGraphql(t *testing.T) {
 	}
 
 	expectedVars := []graphql.Variable{
-		{Name: "$lineItem_query", Path: []string{"tree"}},
-		{Name: "$tree_tree1_tree1Field2_lineItem_query", Path: []string{"tree", "tree1", "tree1Field2", "lineItem"}},
+		{Name: "$lineItem_alias1_lineItem_query", Paths: []string{"lineItem_alias1:lineItem"}, Type: "String!"},
+		{Name: "$id", Paths: []string{"lineItem_alias1:lineItem"}, Type: "Int!"},
+		{Name: "$tree_tree1_tree1Field2_lineItem_query", Paths: []string{"tree/tree1/tree1Field2/lineItem"}, Type: "String!"},
 	}
 	if len(exec.Variables) != len(expectedVars) {
 		t.Fatalf("变量数量不符，实际 %d 预期 %d", len(exec.Variables), len(expectedVars))
 	}
-	for i, v := range exec.Variables {
+	// 按变量名排序以便比较
+	gotVarsMap := make(map[string]*graphql.Variable)
+	for _, v := range exec.Variables {
 		if v == nil {
-			t.Fatalf("变量 %d 为 nil", i)
+			t.Fatalf("变量为 nil")
 		}
-		if v.Name != expectedVars[i].Name || !reflect.DeepEqual(v.Path, expectedVars[i].Path) {
-			t.Fatalf("变量 %d 不符合预期，实际 %+v 预期 %+v", i, v, expectedVars[i])
+		gotVarsMap[v.Name] = v
+	}
+	expectedVarsMap := make(map[string]*graphql.Variable)
+	for i := range expectedVars {
+		expectedVarsMap[expectedVars[i].Name] = &expectedVars[i]
+	}
+	for name, expectedVar := range expectedVarsMap {
+		gotVar, ok := gotVarsMap[name]
+		if !ok {
+			t.Fatalf("缺少变量 %s", name)
+		}
+		if gotVar.Name != expectedVar.Name || !reflect.DeepEqual(gotVar.Paths, expectedVar.Paths) || gotVar.Type != expectedVar.Type {
+			t.Fatalf("变量 %s 不符合预期，实际 %+v 预期 %+v", name, gotVar, expectedVar)
 		}
 	}
 }
@@ -49,8 +63,9 @@ const expectedBody = `{
   fragment1{ ...MainFragment }
   fragment2{ ...MainFragment }
   unionField{ ...MainUnion }
-  lineItem(first: 10, query: $lineItem_query){ ...MainLineItemConnect }
+  lineItem_alias1:lineItem(first: 10, query: $lineItem_alias1_lineItem_query, id: $id){ ...MainLineItemConnect }
   inlineField1
+  inline_alias2:inlineField2
   inlineField2
   tree{
     tree1{
@@ -58,15 +73,22 @@ const expectedBody = `{
       tree1Field1
       tree1Field2{
         tree2Field1
-        lineItem(first: 10, query: $tree_tree1_tree1Field2_lineItem_query){ ...MainLineItemConnect }
+        lineItem(query: $tree_tree1_tree1Field2_lineItem_query, first: 10){ ...MainLineItemConnect }
       }
+      inline2:inline1{ ...MainInline }
+      ...MainInline
     }
   }
+  anonymity1{
+    alias2:field1
+  }
+  ...MainFragment
 }`
 
 var expectedFragments = map[string]string{
 	"MainFragment": `fragment MainFragment on Fragment{
   fragmentField1
+  fragmentField2_alias1:fragmentField1
 }`,
 	"MainUnion": `fragment MainUnion on Union{
   __typename
@@ -82,6 +104,10 @@ var expectedFragments = map[string]string{
   nodes{
     lineItemField1
   }
+}`,
+	"MainInline": `fragment MainInline on Inline{
+  inlineField1
+  inline_alias2:inlineField2
 }`,
 }
 
