@@ -73,9 +73,7 @@ func (g *Graphql) Query(name string) (string, error) {
 		if v.Type == "" {
 			return "", fmt.Errorf("变量 %s 缺少类型定义", v.Name)
 		}
-		// 变量名去掉 $ 前缀，用于变量定义
-		varName := strings.TrimPrefix(v.Name, "$")
-		varDefs = append(varDefs, fmt.Sprintf("%s: %s", varName, v.Type))
+		varDefs = append(varDefs, fmt.Sprintf("%s: %s", v.Name, v.Type))
 	}
 
 	// 构建操作声明

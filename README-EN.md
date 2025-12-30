@@ -71,7 +71,7 @@ fragment MainFoo on Foo{
 fragment MainFoo on Foo{
   bar
 }
-query GetData(list_query: String!, id: Int!) {
+query GetData($list_query: String!, $id: Int!) {
   field1
   list(first: 10, query: $list_query, id: $id){
     foo1{ ...MainFoo }

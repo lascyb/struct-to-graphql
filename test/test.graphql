@@ -1,0 +1,49 @@
+fragment MainFragment on Fragment{
+    fragmentField1
+    fragmentField2_alias1:fragmentField1
+}
+fragment MainUnion on Union{
+    __typename
+    ... on Union1 {
+        union1Field1
+    }
+    ... on Union2 {
+        union1Field1
+    }
+    ... on Fragment { ...MainFragment }
+}
+fragment MainLineItemConnect on LineItemConnect{
+    nodes{
+        lineItemField1
+    }
+}
+fragment MainInline on Inline{
+    inlineField1
+    inline_alias2:inlineField2
+}
+query GetData($lineItem_alias1_lineItem_query: String!, $id: Int!, $tree_tree1_tree1Field2_lineItem_query: String!) {
+    field1
+    fragment1{ ...MainFragment }
+    fragment2{ ...MainFragment }
+    unionField{ ...MainUnion }
+    lineItem_alias1:lineItem(first: 10, query: $lineItem_alias1_lineItem_query, id: $id){ ...MainLineItemConnect }
+    inlineField1
+    inline_alias2:inlineField2
+    inlineField2
+    tree{
+        tree1{
+            union1Field1{ ...MainUnion }
+            tree1Field1
+            tree1Field2{
+                tree2Field1
+                lineItem(first: 10, query: $tree_tree1_tree1Field2_lineItem_query){ ...MainLineItemConnect }
+            }
+            inline2:inline1{ ...MainInline }
+            ...MainInline
+        }
+    }
+    anonymity1{
+        alias2:field1
+    }
+    ...MainFragment
+}
