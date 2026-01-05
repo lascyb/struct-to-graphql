@@ -1,7 +1,6 @@
 package graphql
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -178,8 +177,6 @@ func (g *Builder) buildArgumentValue(arg *Arg) (string, error) {
 	if arg == nil {
 		return "", nil
 	}
-	s, _ := json.Marshal(arg)
-	fmt.Println(string(s))
 
 	if arg.Placeholder {
 		var varName string
@@ -190,7 +187,6 @@ func (g *Builder) buildArgumentValue(arg *Arg) (string, error) {
 		} else {
 			varName = strings.TrimLeft(arg.Value, "$")
 		}
-		fmt.Println(g.currentPaths, varName)
 		if variable, ok := g.variableMap[varName]; ok {
 			//varName = fmt.Sprintf("%s_%d", varName, index+1)
 			if g.variableMap[varName].Type != variable.Type {
