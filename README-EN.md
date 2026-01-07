@@ -49,6 +49,7 @@ func main() {
 	query, _ := q.Query("GetData")
 	fmt.Println(strings.Repeat("-", 15), "Complete Query", strings.Repeat("-", 15))
 	fmt.Println(query)
+}
 --------------- Query Body ---------------
 {
   field1
@@ -82,6 +83,30 @@ query GetData($list_query: String!, $id: Int!) {
   }
 }
 
+```
+
+### Mutation Example (same as [test/test_mutation/test_1.go](./test/test_mutation/test_1.go))
+```go
+type ProductVariant struct {
+	ID    string `json:"id" graphql:"id"`
+	Price string `json:"price" graphql:"price"`
+}
+type Mutation struct {
+	ProductVariantsBulkUpdate struct {
+		Product struct {
+			ID string `json:"id" graphql:"id"`
+		} `graphql:"product"`
+		ProductVariants []ProductVariant `json:"productVariants" graphql:"productVariants"`
+	} `graphql:"productVariantsBulkUpdate(productId:$productId:ID!,variants: $variants:[ProductVariantsBulkInput!]!)"`
+}
+
+func main() {
+	m, _ := graphql.Marshal(Mutation{})
+	
+	// Use Mutation method to assemble complete GraphQL mutation string
+	mutation, _ := m.Mutation("productVariantsBulkUpdate")
+	fmt.Println(mutation)
+}
 ```
 
 ### Generation Example (same as [test/main.go](./test/main.go))
@@ -173,6 +198,7 @@ fragment MainLineItemConnect on LineItemConnect{
 - `Graphql.Variables`: Placeholder variable list (Name is `$xxx`, Path represents the hierarchical path, Type is the variable type such as `String!`, `Int!`).
 - `Graphql.Fragments`: Deduplicated generated Fragment definitions.
 - `Graphql.Query(name string)`: Assembles a complete GraphQL query string, including operation declaration, variable definitions, query body, and Fragments.
+- `Graphql.Mutation(name string)`: Assembles a complete GraphQL mutation string, including operation declaration, variable definitions, query body, and Fragments.
 
 ## Formatting
 Default indentation is two spaces, can be overridden with `graphql.SetIndent("    ")`.
@@ -190,5 +216,5 @@ Default indentation is two spaces, can be overridden with `graphql.SetIndent("  
 - [x] **Variable types** - Support for specifying variable types (e.g., `$query:String!`, `$id:Int!`)
 - [x] **Variable definitions** - Support for generating variable definitions (e.g., `($episode: Episode)`), automatically generated via `Query(name)` method
 - [ ] **Default variables** - Support for variable default values (e.g., `$episode: Episode = JEDI`)
-- [ ] **Mutations** - Support for generating mutation operations
+- [x] **Mutations** - Support for generating mutation operations, via `Mutation(name)` method
 - [ ] **Subscriptions** - Support for generating subscription operations

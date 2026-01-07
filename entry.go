@@ -51,11 +51,7 @@ func Marshal(v any) (*Graphql, error) {
 		Fragments: slices.Collect(maps.Values(builder.fragmentMap)),
 	}, nil
 }
-
-// Query 组装完整的 GraphQL 查询字符串
-// name: 查询名称，如 "GetUser"、"ListItems" 等
-// 返回: 完整的 GraphQL 查询字符串，包含操作声明、变量定义、查询体和 Fragments
-func (g *Graphql) Query(name string) (string, error) {
+func (g *Graphql) build(operation, name string) (string, error) {
 	if g == nil {
 		return "", errors.New("Graphql cannot be nil")
 	}
@@ -77,18 +73,31 @@ func (g *Graphql) Query(name string) (string, error) {
 	}
 
 	// 构建操作声明
-	opDecl := "query"
 	if name != "" {
-		opDecl += " " + name
+		operation += " " + name
 	}
 	if len(varDefs) > 0 {
-		opDecl += "(" + strings.Join(varDefs, ", ") + ")"
+		operation += "(" + strings.Join(varDefs, ", ") + ")"
 	}
 
 	// 组合查询体
-	queryBody := fmt.Sprintf("%s %s", opDecl, g.Body)
+	queryBody := fmt.Sprintf("%s %s", operation, g.Body)
 
 	parts = append(parts, queryBody)
 
 	return strings.Join(parts, "\n"), nil
+}
+
+// Query 组装完整的 GraphQL 查询字符串
+// name: 查询名称，如 "GetUser"、"ListItems" 等
+// 返回: 完整的 GraphQL 查询字符串，包含操作声明、变量定义、查询体和 Fragments
+func (g *Graphql) Query(name string) (string, error) {
+	return g.build("query", name)
+}
+
+// Mutation 组装完整的 GraphQL 突变字符串
+// name: 突变名称，如 "productUpdate"、"productVariantsBulkUpdate" 等
+// 返回: 完整的 GraphQL 突变字符串，包含操作声明、变量定义、查询体和 Fragments
+func (g *Graphql) Mutation(name string) (string, error) {
+	return g.build("mutation", name)
 }

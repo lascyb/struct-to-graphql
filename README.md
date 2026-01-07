@@ -84,6 +84,30 @@ query GetData($list_query: String!, $id: Int!) {
 
 ```
 
+### Mutation 示例（同 [test/test_mutation/test_1.go](./test/test_mutation/test_1.go)）
+```go
+type ProductVariant struct {
+	ID    string `json:"id" graphql:"id"`
+	Price string `json:"price" graphql:"price"`
+}
+type Mutation struct {
+	ProductVariantsBulkUpdate struct {
+		Product struct {
+			ID string `json:"id" graphql:"id"`
+		} `graphql:"product"`
+		ProductVariants []ProductVariant `json:"productVariants" graphql:"productVariants"`
+	} `graphql:"productVariantsBulkUpdate(productId:$productId:ID!,variants: $variants:[ProductVariantsBulkInput!]!)"`
+}
+
+func main() {
+	m, _ := graphql.Marshal(Mutation{})
+	
+	// 使用 Mutation 方法组装完整的 GraphQL 变更字符串
+	mutation, _ := m.Mutation("productVariantsBulkUpdate")
+	fmt.Println(mutation)
+}
+```
+
 ### 生成示例（同 [test/main.go](./test/main.go)）
 使用测试里的 `TestStruct`：
 
@@ -173,6 +197,7 @@ fragment MainLineItemConnect on LineItemConnect{
 - `Graphql.Variables`：占位符变量列表（Name 为 `$xxx`，Path 表示层级路径，Type 为变量类型如 `String!`、`Int!`）。
 - `Graphql.Fragments`：去重生成的 Fragment 定义。
 - `Graphql.Query(name string)`：组装完整的 GraphQL 查询字符串，包含操作声明、变量定义、查询体和 Fragments。
+- `Graphql.Mutation(name string)`：组装完整的 GraphQL 变更字符串，包含操作声明、变量定义、查询体和 Fragments。
 
 ## 格式化
 默认缩进为两个空格，可通过 `graphql.SetIndent("    ")` 覆盖。
@@ -190,5 +215,5 @@ fragment MainLineItemConnect on LineItemConnect{
 - [x] **Variable types（变量类型）** - 支持为变量指定类型（如 `$query:String!`、`$id:Int!`）
 - [x] **Variable definitions（变量定义）** - 支持生成变量定义部分（如 `($episode: Episode)`），通过 `Query(name)` 方法自动生成
 - [ ] **Default variables（默认变量值）** - 支持变量默认值（如 `$episode: Episode = JEDI`）
-- [ ] **Mutations（变更）** - 支持生成 mutation 操作
+- [x] **Mutations（变更）** - 支持生成 mutation 操作，通过 `Mutation(name)` 方法
 - [ ] **Subscriptions（订阅）** - 支持生成 subscription 操作
