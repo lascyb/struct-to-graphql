@@ -1,0 +1,12 @@
+mutation UpdateProductVariantsOptionValuesInBulk($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
+    productVariantsBulkUpdate(productId: $productId, variants: $variants){
+        product{
+            id
+        }
+        productVariants{
+            id
+            sku
+            price
+        }
+    }
+}

@@ -1,0 +1,31 @@
+query MyQuery($query: String!) {
+    discountNodes(first: 10, query: $query){
+        nodes{
+            discount{
+                __typename
+                ... on DiscountCodeBasic {
+                    title
+                    summary
+                    status
+                }
+                ... on DiscountAutomaticBasic {
+                    title
+                    summary
+                    status
+                }
+                ... on DiscountCodeBxgy {
+                    title
+                    summary
+                    status
+                }
+            }
+            id
+        }
+        pageInfo{
+            endCursor
+            hasNextPage
+            hasPreviousPage
+            startCursor
+        }
+    }
+}
