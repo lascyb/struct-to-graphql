@@ -36,7 +36,7 @@ func (p *Parser) ParseType(typ reflect.Type) (*TypeParser, error) {
 	if typ.Kind() != reflect.Struct {
 		return nil, errors.New("must be a struct type to convert")
 	}
-	if v, ok := p.types[typ]; ok {
+	if v, ok := p.types[typ]; ok && v != nil {
 		v.Reused++
 		return v, nil
 	}
