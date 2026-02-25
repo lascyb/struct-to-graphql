@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	graphql "github.com/lascyb/struct-to-graphql"
+	"github.com/lascyb/struct-to-graphql"
 )
 
 func TestQuery(t *testing.T) {

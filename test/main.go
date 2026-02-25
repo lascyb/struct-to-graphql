@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	graphql "github.com/lascyb/struct-to-graphql"
+	"github.com/lascyb/struct-to-graphql"
 )
 
 func init() {

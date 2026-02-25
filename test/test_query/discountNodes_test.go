@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	graphql "github.com/lascyb/struct-to-graphql"
+	"github.com/lascyb/struct-to-graphql"
 )
 
 type DiscountCodeBasic struct {
@@ -44,15 +44,22 @@ type DiscountNodeConnection struct {
 	PageInfo PageInfo       `json:"pageInfo" graphql:"pageInfo"`
 }
 type Query struct {
-	DiscountNodeConnection DiscountNodeConnection `json:"discountNodes" graphql:"discountNodes(query:$query:String!, first: 10)"`
+	DiscountNodeConnection DiscountNodeConnection `json:"discountNodes" graphql:"discountNodes(query:$:String=1, first: 10,after:$:[[String!!]!]!)"`
 }
 
 func Test_discountNodes(test *testing.T) {
-	q, _ := graphql.Marshal(Query{})
+	q, err := graphql.Marshal(Query{})
+	if err != nil {
+		fmt.Println(err)
+		test.Fail()
+	}
 
 	// 获取完整查询
-	query, _ := q.Query("MyQuery")
-
+	query, err := q.Query("MyQuery")
+	if err != nil {
+		fmt.Println(err)
+		test.Fail()
+	}
 	fmt.Println(query)
 
 	//输出结果 discountNodes.graphql

@@ -210,10 +210,10 @@ fragment MainLineItemConnect on LineItemConnect{
 - [x] **Fragments（片段）** - 可复用片段，自动生成和去重
 - [x] **Inline Fragments（内联片段）** - 联合类型支持，使用 `__typename` 字段中的 `union` 标记自动生成
 - [x] **Meta fields（元字段）** - 支持 `__typename` 字段
-- [ ] **Directives（指令）** - 指令功能支持（如 `@include`、`@skip` 等）
 - [x] **Operation type and name（操作类型和名称）** - 支持生成完整的操作声明（如 `query GetUser { ... }`），通过 `Query(name)` 方法
 - [x] **Variable types（变量类型）** - 支持为变量指定类型（如 `$query:String!`、`$id:Int!`）
 - [x] **Variable definitions（变量定义）** - 支持生成变量定义部分（如 `($episode: Episode)`），通过 `Query(name)` 方法自动生成
-- [ ] **Default variables（默认变量值）** - 支持变量默认值（如 `$episode: Episode = JEDI`）
 - [x] **Mutations（变更）** - 支持生成 mutation 操作，通过 `Mutation(name)` 方法
+- [x] **Default variables（默认变量值）** - 支持变量默认值（如 `$episode: Episode = JEDI`）
+- [ ] **Directives（指令）** - 指令功能支持（如 `@include`、`@skip` 等）
 - [ ] **Subscriptions（订阅）** - 支持生成 subscription 操作

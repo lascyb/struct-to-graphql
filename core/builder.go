@@ -1,4 +1,4 @@
-package graphql
+package core
 
 import (
 	"fmt"
@@ -8,15 +8,31 @@ import (
 )
 
 type Builder struct {
-	fragmentMap  map[reflect.Type]*Fragment // Fragment 映射，用于去重
-	variableMap  map[string]*Variable       // 变量映射，用于去重
+	FragmentMap  map[reflect.Type]*Fragment // Fragment 映射，用于去重
+	VariableMap  map[string]*Variable       // 变量映射，用于去重
 	currentPaths []string
+}
+
+// Fragment GraphQL Fragment
+type Fragment struct {
+	Name string // Fragment 名称（如 "UserInfo"）
+	Type string // Fragment 类型（如 "User"）
+	Body string // Fragment 完整定义（如 "fragment UserInfo on User { ... }"）
+}
+
+// Variable GraphQL 变量
+type Variable struct {
+	Name         string      // 变量名（如 "$nodes_fieldName_first"）
+	Paths        []string    // 变量路径（如 "nodes.edges.node.first"）
+	Type         string      // 变量类型（如 Int、Int!、String、String!）
+	HasDefault   bool        // 是否有默认值
+	DefaultValue interface{} // 默认值，用于变量定义中的 " = value"
 }
 
 func NewBuilder() *Builder {
 	return &Builder{
-		fragmentMap:  make(map[reflect.Type]*Fragment),
-		variableMap:  make(map[string]*Variable),
+		FragmentMap:  make(map[reflect.Type]*Fragment),
+		VariableMap:  make(map[string]*Variable),
 		currentPaths: []string{},
 	}
 }
@@ -41,7 +57,7 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 		return "", nil
 	}
 	if typeParser.Reused > 1 {
-		if fragment, ok := g.fragmentMap[typeParser.source]; ok {
+		if fragment, ok := g.FragmentMap[typeParser.source]; ok {
 			if inlineType {
 				return fmt.Sprintf("\n%s...%s", indentWithLevel(level+1), fragment.Name), nil
 			}
@@ -137,7 +153,7 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 			fragmentName := strings.Join(split, "")
 			fragmentType := typeParser.source.Name()
 			fragment := fmt.Sprintf("fragment %s on %s%s", fragmentName, fragmentType, buf.String())
-			g.fragmentMap[typeParser.source] = &Fragment{
+			g.FragmentMap[typeParser.source] = &Fragment{
 				Name: strings.ReplaceAll(fragmentName, ".", "_"),
 				Type: fragmentType,
 				Body: fragment,
@@ -155,54 +171,82 @@ func (g *Builder) buildFieldArgs(field *FieldParser) (string, error) {
 	}
 
 	parts := make([]string, 0, len(field.TagValue.Args))
-	for name, arg := range field.TagValue.Args {
-		value, err := g.buildArgumentValue(arg)
+	for key, arg := range field.TagValue.Args {
+		value, err := g.buildArgumentValue(key, arg)
 		if err != nil {
 			return "", err
 		}
 		if value == "" {
 			continue
 		}
-		parts = append(parts, fmt.Sprintf("%s: %s", name, value))
+		parts = append(parts, fmt.Sprintf("%s:%s", key, value))
 	}
 
 	if len(parts) == 0 {
 		return "", nil
 	}
-	return fmt.Sprintf("(%s)", strings.Join(parts, ", ")), nil
+	return fmt.Sprintf("(%s)", strings.Join(parts, ",")), nil
+}
+
+func CamelToSnake(s string) string {
+	var result []rune
+	for i, r := range s {
+		if unicode.IsUpper(r) {
+			if i > 0 {
+				result = append(result, '_')
+			}
+			result = append(result, unicode.ToLower(r))
+		} else {
+			result = append(result, r)
+		}
+	}
+	return string(result)
 }
 
 // buildArgumentValue 根据占位符与自定义名生成参数值字符串
-func (g *Builder) buildArgumentValue(arg *Arg) (string, error) {
+func (g *Builder) buildArgumentValue(key string, arg *Arg) (string, error) {
 	if arg == nil {
 		return "", nil
 	}
 
-	if arg.Placeholder {
-		var varName string
-
-		if arg.Value == "$" { //匿名占位符
-			// 匿名占位符，生成变量名（会在内部标记到 variableMap）
-			varName = strings.ReplaceAll(strings.Join(g.currentPaths, "_"), ":", "_") + "_" + arg.Name
-		} else {
-			varName = strings.TrimLeft(arg.Value, "$")
+	if arg.ArgValue.Type == "variable" {
+		varName := arg.VarName
+		if varName == "" {
+			varName = CamelToSnake(strings.ReplaceAll(strings.Join(g.currentPaths, "_")+"_"+key, ":", "_"))
 		}
-		if variable, ok := g.variableMap[varName]; ok {
-			//varName = fmt.Sprintf("%s_%d", varName, index+1)
-			if g.variableMap[varName].Type != variable.Type {
-				return "", fmt.Errorf("变量 %s 类型不统一：[%s]<==>[%s]", varName, g.variableMap[varName].Type, variable.Type)
+		if variable, ok := g.VariableMap[varName]; ok {
+			if g.VariableMap[varName].Type != variable.Type {
+				return "", fmt.Errorf("变量 %s 类型不统一：[%s]<==>[%s]", varName, g.VariableMap[varName].Type, variable.Type)
 			}
-			g.variableMap[varName].Paths = append(g.variableMap[varName].Paths, strings.Join(g.currentPaths, "/"))
-
+			g.VariableMap[varName].Paths = append(g.VariableMap[varName].Paths, strings.Join(g.currentPaths, "/"))
 		} else {
-			// 收集变量到 Variables 数组
-			g.variableMap[varName] = &Variable{
-				Name:  "$" + varName,
-				Paths: []string{strings.Join(g.currentPaths, "/")},
-				Type:  arg.Type,
+			g.VariableMap[varName] = &Variable{
+				Name:         "$" + varName,
+				Paths:        []string{strings.Join(g.currentPaths, "/")},
+				Type:         arg.GraphQLType,
+				HasDefault:   arg.HasDefault,
+				DefaultValue: arg.DefaultVal,
 			}
 		}
-		return g.variableMap[varName].Name, nil
+		return g.VariableMap[varName].Name, nil
 	}
-	return arg.Value, nil
+	return formatLiteralArgValue(arg.Value), nil
+}
+
+// formatLiteralArgValue 将字面量参数格式化为 GraphQL 查询中的写法（字符串加引号等）
+func formatLiteralArgValue(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	switch val := v.(type) {
+	case string:
+		return `"` + strings.ReplaceAll(val, `"`, `\"`) + `"`
+	case bool:
+		if val {
+			return "true"
+		}
+		return "false"
+	default:
+		return fmt.Sprint(v)
+	}
 }

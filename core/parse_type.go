@@ -1,10 +1,9 @@
-package graphql
+package core
 
 import (
 	"errors"
 	"fmt"
 	"reflect"
-	"slices"
 )
 
 type TypeParser struct {
@@ -53,7 +52,7 @@ func (p *Parser) ParseType(typ reflect.Type) (*TypeParser, error) {
 		if err != nil {
 			return nil, err
 		}
-		if fieldParser.FieldName == "__typename" && slices.Contains(fieldParser.TagValue.Flags, "union") {
+		if fieldParser.FieldName == "__typename" && fieldParser.TagValue != nil && hasFlag(fieldParser.TagValue.Flags, "union") {
 			isUnionType = true
 		}
 		fields = append(fields, fieldParser)

@@ -1,4 +1,6 @@
-github.com/lascyb/tagkit v0.0.5 h1:TtUWNzYg6G4iFrq5reqYkQtZiEylQCy3c5/j7wAOkn0=
-github.com/lascyb/tagkit v0.0.5/go.mod h1:eLPuwotIOh0q+/L4EExHsgRMdQ2+ruS2gliz0OrKvHs=
-github.com/lascyb/tagkit v0.0.6 h1:UKLk9001cyhibkA5SYz2WEk87vj5sV1BJIov4Jac/68=
-github.com/lascyb/tagkit v0.0.6/go.mod h1:eLPuwotIOh0q+/L4EExHsgRMdQ2+ruS2gliz0OrKvHs=
+github.com/lascyb/tagkit v1.0.3 h1:g8DTCIne8Zx3UXCrOOS5bxCNhDyNXJZMZOYNGRJ71bM=
+github.com/lascyb/tagkit v1.0.3/go.mod h1:hs/s+12VlX3JnkLtl3RTaUKtm2PY+jaEBdykvzDUM/M=
+github.com/lascyb/tagkit v1.0.5 h1:6/B+/EBZaRuDeZve54iw8Tx+NdT7lMGx7UlWVfNWYR4=
+github.com/lascyb/tagkit v1.0.5/go.mod h1:hs/s+12VlX3JnkLtl3RTaUKtm2PY+jaEBdykvzDUM/M=
+github.com/shopspring/decimal v1.4.0 h1:bxl37RwXBklmTi0C79JfXCEBD1cqqHt0bbgBAGFp81k=
+github.com/shopspring/decimal v1.4.0/go.mod h1:gawqmDU56v4yIKSwfBSFip1HdCCXN8/+DMd9qYNcwME=

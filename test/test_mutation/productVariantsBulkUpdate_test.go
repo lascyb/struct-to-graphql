@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	graphql "github.com/lascyb/struct-to-graphql"
+	"github.com/lascyb/struct-to-graphql"
 )
 
 type Product struct {
