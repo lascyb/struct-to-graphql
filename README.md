@@ -10,179 +10,63 @@ go get github.com/lascyb/struct-to-graphql
 ```
 
 ## 快速上手
+
 ```go
+package main
+
 import (
+	"fmt"
 	graphql "github.com/lascyb/struct-to-graphql"
 )
 
-type Foo struct {
-	Bar string `graphql:"bar"`
+type User struct {
+	ID   string `graphql:"id"`
+	Name string `graphql:"name"`
 }
+
 type Query struct {
-	Field1 string `graphql:"field1"`
-	List   struct {
-		Foo1  Foo `graphql:"foo1"`
-		Foo2  Foo `graphql:"foo2"`
+	User  User `graphql:"user"`
+	List  struct {
 		Nodes []struct {
 			Name string `graphql:"name"`
 		} `graphql:"nodes"`
-	} `graphql:"list(first:10,query:$:String!,id:$id:Int!)"` // 支持参数占位符和类型，$ 表示匿名占位符，会根据层级自动生成变量名：$list_query，类型通过 :Type 指定
+	} `graphql:"list(first:10, query:$:String!, id:$id:Int!)"`
 }
-
 
 func main() {
 	q, _ := graphql.Marshal(Query{})
-	
-	// 方式1：分别获取各部分
-	fmt.Println(strings.Repeat("-", 15), "查询体", strings.Repeat("-", 15))
-	fmt.Println(q.Body) // 打印查询体
-	fmt.Println(strings.Repeat("-", 15), "占位符变量列表", strings.Repeat("-", 15))
-	for _, variable := range q.Variables {
-		fmt.Println("Name:", variable.Name, ",Type:", variable.Type, ",Paths:", variable.Paths) // 占位符变量列表
-	}
-	fmt.Println(strings.Repeat("-", 15), "去重生成的 Fragment", strings.Repeat("-", 15))
-	for _, fragment := range q.Fragments {
-		fmt.Println(fragment.Body) // 去重生成的 Fragment
-	}
-	
-	// 方式2：使用 Query 方法组装完整查询
 	query, _ := q.Query("GetData")
-	fmt.Println(strings.Repeat("-", 15), "完整查询", strings.Repeat("-", 15))
-	fmt.Println(query)
---------------- 查询体 ---------------
-{
-  field1
-  list(first: 10, query: $list_query, id: $id){
-    foo1{ ...MainFoo }
-    foo2{ ...MainFoo }
+	fmt.Println(query)            
+}
+```
+
+输出（完整查询，含变量定义）：
+
+```text
+query GetData($list_query:String!,$id:Int!) {
+  user{
+    id
+    name
+  }
+  list(query:$list_query,id:$id,first:10){
     nodes{
       name
     }
   }
 }
---------------- 占位符变量列表 ---------------
-Name: $list_query ,Type: String! ,Paths: [list]
-Name: $id ,Type: Int! ,Paths: [list]
---------------- 去重生成的 Fragment ---------------
-fragment MainFoo on Foo{
-  bar
-}
---------------- 完整查询 ---------------
-fragment MainFoo on Foo{
-  bar
-}
-query GetData($list_query: String!, $id: Int!) {
-  field1
-  list(first: 10, query: $list_query, id: $id){
-    foo1{ ...MainFoo }
-    foo2{ ...MainFoo }
-    nodes{
-      name
-    }
-  }
-}
-
 ```
 
-### Mutation 示例（同 [test/test_mutation/test_1.go](./test/test_mutation/test_1.go)）
-```go
-type ProductVariant struct {
-	ID    string `json:"id" graphql:"id"`
-	Price string `json:"price" graphql:"price"`
-}
-type Mutation struct {
-	ProductVariantsBulkUpdate struct {
-		Product struct {
-			ID string `json:"id" graphql:"id"`
-		} `graphql:"product"`
-		ProductVariants []ProductVariant `json:"productVariants" graphql:"productVariants"`
-	} `graphql:"productVariantsBulkUpdate(productId:$productId:ID!,variants: $variants:[ProductVariantsBulkInput!]!)"`
-}
+更多示例（联合类型、Fragment 复用、内联、Mutation 等）见 [test](./test) 目录。
 
-func main() {
-	m, _ := graphql.Marshal(Mutation{})
-	
-	// 使用 Mutation 方法组装完整的 GraphQL 变更字符串
-	mutation, _ := m.Mutation("productVariantsBulkUpdate")
-	fmt.Println(mutation)
-}
-```
+### 测试与示例（参考 [test](./test)）
 
-### 生成示例（同 [test/main.go](./test/main.go)）
-使用测试里的 `TestStruct`：
+| 场景 | 位置 |
+|------|------|
+| 综合场景（参数、联合、Fragment、内联、嵌入、别名等） | [test/main_test.go](./test/main_test.go) |
+| Query 列表/分页/变量默认值 | [test/test_query/discountNodes_test.go](./test/test_query/discountNodes_test.go) |
+| Mutation | [test/test_mutation/productVariantsBulkUpdate_test.go](./test/test_mutation/productVariantsBulkUpdate_test.go) |
 
-```go
-type TestStruct struct {
-	Field1     string          `graphql:"field1"`
-	Fragment1  Fragment        `graphql:"fragment1"`
-	Fragment2  Fragment        `graphql:"fragment2"`
-	UnionField Union           `graphql:"unionField"`
-	LineItem   LineItemConnect `graphql:"lineItem(first:10,query:$)"`
-	Inline
-	Inline2 Inline2 `graphql:"inline2,inline"`
-	TreeField Tree  `graphql:"tree"`
-}
-```
-
-### 典型输出：
-#### 请求主体
-```text
-{
-  field1
-  fragment1{ ...MainFragment }
-  fragment2{ ...MainFragment }
-  unionField{ ...MainUnion }
-  lineItem(first: 10, query: $lineItem_query){ ...MainLineItemConnect }
-  inlineField1
-  inlineField2
-  tree{
-    tree1{
-      union1Field1{ ...MainUnion }
-      tree1Field1
-      tree1Field2{
-        tree2Field1
-        lineItem(first: 10, query: $tree_tree1_tree1Field2_lineItem_query){ ...MainLineItemConnect }
-      }
-    }
-  }
-}
-```
-#### Variables
-```text
-- {Name:$lineItem_query Path:[tree]}
-- {Name:$tree_tree1_tree1Field2_lineItem_query Path:[tree tree1 tree1Field2 lineItem]}
-```
-#### Fragments
-- MainFragment:
-
-```text
-fragment MainFragment on Fragment{
-  fragmentField1
-}
-```
-
-- MainUnion:
-```text
-fragment MainUnion on Union{
-  __typename
-  ... on Union1 {
-    union1Field1
-  }
-  ... on Union2 {
-    union1Field1
-  }
-  ... on Fragment { ...MainFragment }
-}
-```
-
-- MainLineItemConnect:
-```text
-fragment MainLineItemConnect on LineItemConnect{
-  nodes{
-    lineItemField1
-  }
-}
-```
+运行测试：`go test ./test/...`，或在对应 `_test.go` 中查看完整结构体定义与生成结果。
 
 ## 标签规则(参考[tagkit](https://github.com/lascyb/tagkit))
 - `graphql:"fieldName"`：指定字段名；未提供时回退到 `json` 标签，再回退到字段名。

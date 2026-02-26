@@ -215,8 +215,8 @@ func (g *Builder) buildArgumentValue(key string, arg *Arg) (string, error) {
 			varName = CamelToSnake(strings.ReplaceAll(strings.Join(g.currentPaths, "_")+"_"+key, ":", "_"))
 		}
 		if variable, ok := g.VariableMap[varName]; ok {
-			if g.VariableMap[varName].Type != variable.Type {
-				return "", fmt.Errorf("变量 %s 类型不统一：[%s]<==>[%s]", varName, g.VariableMap[varName].Type, variable.Type)
+			if variable.Type != arg.GraphQLType {
+				return "", fmt.Errorf("变量 %s 类型不统一：[%s]<==>[%s]", varName, variable.Type, arg.GraphQLType)
 			}
 			g.VariableMap[varName].Paths = append(g.VariableMap[varName].Paths, strings.Join(g.currentPaths, "/"))
 		} else {

@@ -1,0 +1,54 @@
+fragment MainUserBasic on UserBasic{
+    id
+    name
+    email
+}
+fragment MainContentUnion on ContentUnion{
+    __typename
+    ... on ArticleContent {
+        title
+        body
+    }
+    ... on VideoContent {
+        title
+        url
+    }
+}
+query GetData($tree_node_children_after:String,$filter:String,$page:Int=1,$product_list_query:String!,$id:Int!,$first:Int!) {
+    queryId
+    productList(filter:$filter,page:$page,first:10,query:$product_list_query,id:$id){
+        nodes{
+            id
+            title
+        }
+    }
+    author{ ...MainUserBasic }
+    reviewer{ ...MainUserBasic }
+    content{ ...MainContentUnion }
+    createdAt
+    updatedAt
+    city
+    street
+    zipCode
+    phone
+    faxAlias:Fax
+    anonymousBlock{
+        displayName:DisplayName
+    }
+    tree{
+        node{
+            content{ ...MainContentUnion }
+            label
+            children(first:$first,after:$tree_node_children_after){
+                nodes{
+                    label
+                    content{ ...MainContentUnion }
+                }
+            }
+            city
+            street
+            zipCode
+        }
+    }
+    ...MainUserBasic
+}
