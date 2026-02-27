@@ -55,8 +55,9 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 		}
 	}
 	fieldType := field.Type
-	if field.Type.Kind() == reflect.Ptr || field.Type.Kind() == reflect.Slice {
-		fieldType = field.Type.Elem()
+	// 支持多层指针 / 切片（例如 []*MetaInfo、[][]*MetaInfo），一路解开直到命中基础结构体类型
+	for fieldType.Kind() == reflect.Ptr || fieldType.Kind() == reflect.Slice {
+		fieldType = fieldType.Elem()
 	}
 
 	var typeParser *TypeParser = nil

@@ -143,6 +143,8 @@ type Profile struct {
 
 	// 嵌入类型示例：匿名嵌入 MetaInfo，其字段 createdAt/updatedAt 平铺到本层
 	MetaInfo
+
+	Pointers []*MetaInfo `json:"pointers" graphql:"pointers"`
 }
 type QueryFull struct {
 	Profile  Profile        `json:"profile" graphql:"profile(author:$author:String!)"`
