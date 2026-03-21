@@ -58,7 +58,7 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 	}
 	if typeParser.Reused > 1 {
 		if fragment, ok := g.FragmentMap[typeParser.source]; ok {
-			if inlineType {
+			if inlineType && !isUnionSubType {
 				return fmt.Sprintf("\n%s...%s", indentWithLevel(level+1), fragment.Name), nil
 			}
 			return fmt.Sprintf("{ ...%s }", fragment.Name), nil
