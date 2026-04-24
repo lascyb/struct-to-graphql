@@ -75,13 +75,13 @@ query GetData($list_query:String!,$id:Int!) {
 }
 ```
 
-For more examples (unions, fragment reuse, inline, mutation, etc.) see the [test](./test) directory.
+For more examples (unions, fragment reuse, anonymous embedding, mutation, etc.) see the [test](./test) directory.
 
 ### Tests and examples (see [test](./test))
 
 | Scenario | Location |
 |----------|----------|
-| Full coverage (arguments, unions, fragments, inline, embedded, aliases) | [test/main_test.go](./test/main_test.go) |
+| Full coverage (arguments, unions, fragments, anonymous embedding, aliases) | [test/main_test.go](./test/main_test.go) |
 | Query list / pagination / variable defaults | [test/test_query/discountNodes_test.go](./test/test_query/discountNodes_test.go) |
 | Mutation | [test/test_mutation/productVariantsBulkUpdate_test.go](./test/test_mutation/productVariantsBulkUpdate_test.go) |
 
@@ -89,11 +89,12 @@ Run tests: `go test ./test/...`, or open the corresponding `_test.go` files for 
 
 ## Tag Rules (refer to [tagkit](https://github.com/lascyb/tagkit))
 - `graphql:"fieldName"`: Specifies the field name; falls back to `json` tag if not provided, then to the field name.
-- `graphql:"fieldName,inline"`: Inline expansion of anonymous or tagged fields.
 - `graphql:"fieldName,alias=aliasName"`: Sets a GraphQL alias for the field, rendered as `aliasName: fieldName`. (Note: the json tag needs to specify the alias, such as `json:"aliasName"`)
 - `graphql:"__typename,union"`: Marks union type branches, generates inline fragments.
 - `graphql:"field(arg1:1,arg2:$,arg3:$value3,...)"`: Supports parameters, `$` in values acts as a placeholder that automatically generates variable names, use `query:$custom` to specify a custom variable name.
 - `graphql:"field(arg:$:Type1,arg2:$varName:Type2)"`: Supports specifying variable types, format is `$:Type` (anonymous placeholder) or `$varName:Type` (custom variable name), e.g., `query:$:String!`, `id:$id:Int!`.
+
+> **Field flattening**: To flatten nested struct fields to the parent level, use Go's anonymous embedding. Anonymous embedding is naturally flattened in both GraphQL queries and `encoding/json` deserialization, fully compatible.
 
 ## Output Structure
 - `Graphql.Body`: Complete query body string.

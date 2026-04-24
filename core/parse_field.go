@@ -100,7 +100,7 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 		TypeName:   fieldType.Name(),
 		FieldName:  fieldName,
 		TagValue:   fieldTagValue,
-		Inline:     field.Anonymous || (tagValue != nil && hasFlag(tagValue.Flags, "inline")),
+		Inline:     field.Anonymous,
 	}, nil
 }
 

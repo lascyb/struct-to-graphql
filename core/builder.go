@@ -56,7 +56,7 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 	if typeParser == nil {
 		return "", nil
 	}
-	if typeParser.Reused > 1 {
+	if typeParser.Reused > 1 && typeParser.source.Name() != "" {
 		if fragment, ok := g.FragmentMap[typeParser.source]; ok {
 			if inlineType && !isUnionSubType {
 				return fmt.Sprintf("\n%s...%s", indentWithLevel(level+1), fragment.Name), nil
@@ -76,11 +76,7 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 	// 遍历所有字段，递归构建 GraphQL 查询字符串
 	currentPathsCount := len(g.currentPaths)
 	for _, field := range typeParser.Fields {
-		if len(g.currentPaths) > currentPathsCount {
-			g.currentPaths = append(g.currentPaths[:len(g.currentPaths)-1], field.FieldName)
-		} else {
-			g.currentPaths = append(g.currentPaths, field.FieldName)
-		}
+		g.currentPaths = append(g.currentPaths[:currentPathsCount], field.FieldName)
 		// 处理联合类型：使用 GraphQL 的 inline fragment 语法 "... on TypeName"
 		if typeParser.Union {
 			buf.WriteString("\n")
@@ -107,7 +103,7 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 			}
 			continue
 		}
-		// 处理内联字段：直接展开字段内容，不添加字段名
+		// 处理匿名嵌入字段：直接展开字段内容，不添加字段名
 		if field.Inline {
 			set, err := g.buildSelectionSet(field.TypeParser, true, false, level)
 			if err != nil {
@@ -133,19 +129,20 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 			buf.WriteString(set)
 		}
 	}
-	if len(g.currentPaths) > currentPathsCount {
-		g.currentPaths = g.currentPaths[:len(g.currentPaths)-1]
-	}
+	g.currentPaths = g.currentPaths[:currentPathsCount]
 	// 闭合花括号，与开头的花括号对应
 	if !inlineType || isUnionSubType {
 		buf.WriteString("\n")
 		buf.WriteString(indentWithLevel(level))
 		buf.WriteString("}")
 
-		// 处理重用类型：当类型被多次引用且不是顶级类型时，应封装为 Fragment
-		if typeParser.Reused > 1 {
+		// 处理重用类型：当类型被多次引用且不是顶级类型时，应封装为 Fragment（匿名结构体无法生成 Fragment，跳过）
+		if typeParser.Reused > 1 && typeParser.source.Name() != "" {
 			split := strings.Split(typeParser.source.String(), ".")
 			for i, s := range split {
+				if s == "" {
+					continue
+				}
 				runes := []rune(s)
 				runes = append([]rune{unicode.ToUpper(rune(s[0]))}, runes[1:]...)
 				split[i] = string(runes)

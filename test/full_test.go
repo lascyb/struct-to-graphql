@@ -66,22 +66,22 @@ type MetaInfo struct {
 	UpdatedAt string `json:"updatedAt" graphql:"updatedAt"`
 }
 
-// --- 内联类型：字段平铺到父级，不增加层级 ---
+// --- 匿名嵌入类型：字段平铺到父级，不增加层级 ---
 
-// AddressInline 地址内联类型；嵌入或标记 inline 时字段直接出现在父级
-type AddressInline struct {
+// AddressEmbed 地址类型；匿名嵌入时字段直接出现在父级
+type AddressEmbed struct {
 	City    string `json:"city" graphql:"city"`
 	Street  string `json:"street" graphql:"street"`
 	ZipCode string `json:"zipCode" graphql:"zipCode"`
 }
 
-// ContactInline 联系省内联；含别名示例
-type ContactInline struct {
+// ContactEmbed 联系方式；匿名嵌入时字段平铺到父级
+type ContactEmbed struct {
 	Phone string `json:"phone" graphql:"phone"`
 	Fax   string `json:"faxAlias" graphql:"fax,alias=faxAlias"`
 }
 
-// --- 嵌套树与联合/内联组合 ---
+// --- 嵌套树与联合/匿名嵌入组合 ---
 
 // TreeNodeLeaf 树叶子节点；避免 TreeNode 递归导致循环引用
 type TreeNodeLeaf struct {
@@ -94,12 +94,12 @@ type TreeNodeConnection struct {
 	Nodes []TreeNodeLeaf `json:"nodes" graphql:"nodes"`
 }
 
-// TreeNode 树节点；内含联合类型、带参数子列表（必填/可选变量）、内联地址
+// TreeNode 树节点；内含联合类型、带参数子列表（必填/可选变量）、匿名嵌入地址
 type TreeNode struct {
 	Content  ContentUnion       `json:"content" graphql:"content"`
 	Label    string             `json:"label" graphql:"label"`
 	Children TreeNodeConnection `json:"children" graphql:"children(first:$first:Int!, after:$:String)"`
-	Address  AddressInline      `json:"address" graphql:"address,inline"`
+	AddressEmbed // 匿名嵌入：字段平铺到父级，与 encoding/json 完全兼容
 }
 
 // TreeRoot 查询根下的树；仅一层入口
@@ -124,22 +124,24 @@ type Profile struct {
 	// 联合类型：根据 __typename 展开为 ... on ArticleContent / ... on VideoContent
 	Content ContentUnion `json:"content" graphql:"content"`
 
+	VideoContent VideoContent `json:"videoContent" graphql:"videoContent"`
+
 	// 自动生成字段名(不转换大小写)
-	AddressInline AddressInline
+	AddressEmbedField AddressEmbed
 
-	// 内联类型：显式标记 inline，ContactInline 字段平铺并可用别名
-	Contact ContactInline `json:"contact,inline" graphql:"contact,inline"`
+	// 匿名嵌入：ContactEmbed 字段平铺到父级，与 encoding/json 完全兼容
+	ContactEmbed
 
-	// 匿名内联结构体：仅此处使用的形状，带别名
+	// 匿名结构体：仅此处使用的形状，带别名
 	AnonymousBlock struct {
 		DisplayName string `json:"displayName" graphql:"name,alias=displayName"`
 	} `json:"anonymousBlock" graphql:"anonymousBlock"`
 
-	// 嵌套树：内含联合类型、带参数列表、内联地址，自定义字段名
+	// 嵌套树：内含联合类型、带参数列表、匿名嵌入地址，自定义字段名
 	Tree TreeRoot `json:"tree1" graphql:"tree1"`
 
-	// Fragment 复用 + 内联 + 别名：同一 UserBasic 以别名展开到本层
-	UserBasic `json:"profileAsAlias,inline" graphql:"profile,inline,alias=profileAsAlias"`
+	// Fragment 复用 + 匿名嵌入：同一 UserBasic 以匿名嵌入展开到本层
+	UserBasic
 
 	// 嵌入类型示例：匿名嵌入 MetaInfo，其字段 createdAt/updatedAt 平铺到本层
 	MetaInfo
