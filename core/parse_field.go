@@ -89,14 +89,13 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 				item.GraphQLType = argVal.VarType
 			}
 			if s, ok := argVal.Value.(string); ok && argVal.Type == "literal" {
-				strs := strings.SplitN(strings.TrimSpace(s), ":", 2)
-				if len(strs) > 0 && strings.TrimSpace(strs[0]) == "" {
+				raw := strings.TrimSpace(s)
+				if raw == "" {
 					return nil, fmt.Errorf("参数值不能定义为空")
 				}
-				item.Value = strings.TrimSpace(strs[0])
-				if len(strs) == 2 && strings.TrimSpace(strs[1]) != "" {
-					item.GraphQLType = strings.TrimSpace(strs[1])
-				}
+				// 字面量参数中的 ":" 仅视为普通字符，不做 value:type 拆分。
+				// 变量类型声明必须使用 $ 占位符语法（如 $:String! / $id:Int!）。
+				item.Value = raw
 			}
 			fieldTagValue.Args[name] = item
 		}
