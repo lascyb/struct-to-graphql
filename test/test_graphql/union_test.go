@@ -42,6 +42,23 @@ type AnonymousUnionContent struct {
 	}
 }
 
+// 匿名结构体即使设置 type flag 也不应作为 union 分支
+type AnonymousUnionWithTypeContent struct {
+	Typename string `json:"__typename" graphql:"__typename,union"`
+	TextData struct {
+		Text string `json:"text" graphql:"text"`
+	} `graphql:"textData,type=TextData"`
+	ImageData struct {
+		URL   string `json:"url" graphql:"url"`
+		Width int    `json:"width" graphql:"width"`
+	} `graphql:"imageData,type=ImageData"`
+}
+
+type AnonymousUnionWithTypeQuery struct {
+	ID      string                        `json:"id" graphql:"id"`
+	Content AnonymousUnionWithTypeContent `json:"content" graphql:"content"`
+}
+
 type AnonymousUnionQuery struct {
 	ID      string                `json:"id" graphql:"id"`
 	Content AnonymousUnionContent `json:"content" graphql:"content"`
@@ -51,6 +68,14 @@ func TestAnonymousStructUnion(t *testing.T) {
 	_, err := graphql.Marshal(AnonymousUnionQuery{})
 	if err == nil {
 		t.Error("Expected error for anonymous struct in union type, but got nil")
+	}
+	t.Logf("Expected error: %v", err)
+}
+
+func TestAnonymousStructUnionWithTypeFlag(t *testing.T) {
+	_, err := graphql.Marshal(AnonymousUnionWithTypeQuery{})
+	if err == nil {
+		t.Error("Expected error for anonymous struct in union type (even with type flag), but got nil")
 	}
 	t.Logf("Expected error: %v", err)
 }

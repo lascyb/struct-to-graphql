@@ -81,7 +81,9 @@ For more examples (unions, fragment reuse, anonymous embedding, mutation, etc.) 
 
 | Scenario | Location |
 |----------|----------|
-| Full coverage (arguments, unions, fragments, anonymous embedding, aliases) | [test/main_test.go](./test/main_test.go) |
+| General GraphQL feature tests (split by file) | [test/test_graphql](./test/test_graphql) |
+| `union`, `type=...` and other tag flags | [test/test_flag](./test/test_flag) |
+| Common misuses and expected errors | [test/test_error/common_misuse_test.go](./test/test_error/common_misuse_test.go) |
 | Query list / pagination / variable defaults | [test/test_query/discountNodes_test.go](./test/test_query/discountNodes_test.go) |
 | Mutation | [test/test_mutation/productVariantsBulkUpdate_test.go](./test/test_mutation/productVariantsBulkUpdate_test.go) |
 
@@ -90,11 +92,19 @@ Run tests: `go test ./test/...`, or open the corresponding `_test.go` files for 
 ## Tag Rules (refer to [tagkit](https://github.com/lascyb/tagkit))
 - `graphql:"fieldName"`: Specifies the field name; falls back to `json` tag if not provided, then to the field name.
 - `graphql:"fieldName,alias=aliasName"`: Sets a GraphQL alias for the field, rendered as `aliasName: fieldName`. (Note: the json tag needs to specify the alias, such as `json:"aliasName"`)
-- `graphql:"__typename,union"`: Marks union type branches, generates inline fragments.
+- `graphql:"__typename,union"`: On the struct that represents a union, mark the `__typename` field; used to emit `__typename` and `... on Type { ... }` selections.
+- **Union struct conventions**:
+  - Other than `__typename`, every branch must be a **named struct type embedded with an anonymous field** (so JSON unmarshalling matches the response shape and each branch is a real Go type);
+  - Anonymous `struct` branches are not allowed;
+  - To use a different GraphQL type name than the Go type name, set `type=...` on the **embed line**, e.g.:
+
+    ```go
+    YourBranchType `graphql:",type=YourGraphQLTypeName"`
+    ```
 - `graphql:"field(arg1:1,arg2:$,arg3:$value3,...)"`: Supports parameters, `$` in values acts as a placeholder that automatically generates variable names, use `query:$custom` to specify a custom variable name.
 - `graphql:"field(arg:$:Type1,arg2:$varName:Type2)"`: Supports specifying variable types, format is `$:Type` (anonymous placeholder) or `$varName:Type` (custom variable name), e.g., `query:$:String!`, `id:$id:Int!`.
 
-> **Field flattening**: To flatten nested struct fields to the parent level, use Go's anonymous embedding. Anonymous embedding is naturally flattened in both GraphQL queries and `encoding/json` deserialization, fully compatible.
+> **Field flattening**: To flatten nested struct fields to the parent level, use Go **anonymous embedding**. The builder treats **only anonymous fields** as inline expansion; a separate `inline` tag flag is not used. This matches common `encoding/json` behaviour.
 
 ## Output Structure
 - `Graphql.Body`: Complete query body string.

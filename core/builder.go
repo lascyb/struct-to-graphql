@@ -87,10 +87,10 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 			} else if field.TypeParser != nil {
 				// 联合类型的其他字段使用 "... on TypeName" 语法
 				buf.WriteString("... on ")
-				if field.TypeParser.source.Name() == "" {
+				if field.TypeName == "" {
 					return "", fmt.Errorf("anonymous struct types are not supported for field [%s] in union types", field.FieldName)
 				}
-				buf.WriteString(field.TypeParser.source.Name())
+				buf.WriteString(field.TypeName)
 				buf.WriteString(" ")
 				// 递归构建子类型，标记为联合子类型以保持花括号
 				set, err := g.buildSelectionSet(field.TypeParser, field.Inline, true, level+1)

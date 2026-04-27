@@ -45,7 +45,7 @@ type CombinedQuery struct {
 	Author   AuthorInfo   `json:"author" graphql:"author"`
 	Editor   AuthorInfo   `json:"editor" graphql:"editor"`
 	Comments []Comment    `json:"comments" graphql:"comments(first:$first:Int=10)"`
-	Meta // 匿名嵌入：字段平铺到父级
+	Meta                  // 匿名嵌入：字段平铺到父级
 }
 
 func TestCombinedFeatures(t *testing.T) {
@@ -161,13 +161,13 @@ func TestCombinedUnmarshal_Compatible(t *testing.T) {
 		Likes int `json:"likes" graphql:"likes"`
 	}
 	type CombinedQueryCompatible struct {
-		ID       string       `json:"id" graphql:"id"`
-		Title    string       `json:"headline" graphql:"title,alias=headline"` // json tag 匹配 alias
-		Content  ContentUnion `json:"content" graphql:"content"`
-		Author   AuthorInfo   `json:"author" graphql:"author"`
-		Editor   AuthorInfo   `json:"editor" graphql:"editor"`
-		Comments []Comment    `json:"comments" graphql:"comments(first:$first:Int=10)"`
-		MetaEmbed // 匿名嵌入：encoding/json 天然扁平化
+		ID        string       `json:"id" graphql:"id"`
+		Title     string       `json:"headline" graphql:"title,alias=headline"` // json tag 匹配 alias
+		Content   ContentUnion `json:"content" graphql:"content"`
+		Author    AuthorInfo   `json:"author" graphql:"author"`
+		Editor    AuthorInfo   `json:"editor" graphql:"editor"`
+		Comments  []Comment    `json:"comments" graphql:"comments(first:$first:Int=10)"`
+		MetaEmbed              // 匿名嵌入：encoding/json 天然扁平化
 	}
 	resp := `{
 		"id": "1",
@@ -228,7 +228,7 @@ func TestPointersUnmarshal(t *testing.T) {
 
 func TestNilPointerUnmarshal(t *testing.T) {
 	type NilPtrQuery struct {
-		Name    string  `json:"name" graphql:"name"`
+		Name    string `json:"name" graphql:"name"`
 		Profile *struct {
 			Age int `json:"age" graphql:"age"`
 		} `json:"profile" graphql:"profile"`

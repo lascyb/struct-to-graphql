@@ -61,6 +61,20 @@ func (p *Parser) ParseType(typ reflect.Type) (*TypeParser, error) {
 		p.types[typ] = nil
 		return nil, nil
 	}
+	if isUnionType {
+		for _, field := range fields {
+			if field.FieldName == "__typename" {
+				continue
+			}
+			if !field.source.Anonymous {
+				return nil, fmt.Errorf("field [%s] in union type [%s] should be an embedded struct field", field.FieldName, typ.String())
+			}
+			// union 分支必须是命名结构体，避免匿名结构体导致响应无法稳定反序列化
+			if field.TypeParser == nil || field.TypeParser.source.Name() == "" {
+				return nil, fmt.Errorf("field [%s] in union type [%s] should be a named struct type", field.FieldName, typ.String())
+			}
+		}
+	}
 	p.types[typ] = &TypeParser{
 		source: typ,
 		Fields: fields,

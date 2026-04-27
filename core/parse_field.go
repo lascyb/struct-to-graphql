@@ -67,6 +67,14 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 			return nil, err
 		}
 	}
+	typeName := fieldType.Name()
+	if tagValue != nil {
+		if f := flagByName(tagValue.Flags, "type"); f != nil && !f.IsBoolean && f.Value != nil {
+			if customType, ok := f.Value.(string); ok && strings.TrimSpace(customType) != "" {
+				typeName = strings.TrimSpace(customType)
+			}
+		}
+	}
 
 	var fieldTagValue *TagValue = nil
 
@@ -97,7 +105,7 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 	return &FieldParser{
 		source:     field,
 		TypeParser: typeParser,
-		TypeName:   fieldType.Name(),
+		TypeName:   typeName,
 		FieldName:  fieldName,
 		TagValue:   fieldTagValue,
 		Inline:     field.Anonymous,

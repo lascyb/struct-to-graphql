@@ -62,7 +62,9 @@ query GetData($list_query:String!,$id:Int!) {
 
 | 场景 | 位置 |
 |------|------|
-| 综合场景（参数、联合、Fragment、匿名嵌入、别名等） | [test/main_test.go](./test/main_test.go) |
+| 综合场景、GraphQL 各能力用例 | [test/test_graphql](./test/test_graphql)（按文件拆分） |
+| `union`、`type=xxx` 等 tag flag | [test/test_flag](./test/test_flag) |
+| 常见错误用法 | [test/test_error/common_misuse_test.go](./test/test_error/common_misuse_test.go) |
 | Query 列表/分页/变量默认值 | [test/test_query/discountNodes_test.go](./test/test_query/discountNodes_test.go) |
 | Mutation | [test/test_mutation/productVariantsBulkUpdate_test.go](./test/test_mutation/productVariantsBulkUpdate_test.go) |
 
@@ -71,11 +73,19 @@ query GetData($list_query:String!,$id:Int!) {
 ## 标签规则(参考[tagkit](https://github.com/lascyb/tagkit))
 - `graphql:"fieldName"`：指定字段名；未提供时回退到 `json` 标签，再回退到字段名。
 - `graphql:"fieldName,alias=aliasName"`：为字段设置 GraphQL 别名，最终渲染为 `aliasName: fieldName`(要注意json标签需要指定别名，如`json:"aliasName"`)。
-- `graphql:"__typename,union"`：标记联合类型分支，生成 inline fragment。
+- `graphql:"__typename,union"`：在表示 union 的结构体中，在 `__typename` 上标记，用于生成 `... on 类型 { ... }` 与 `__typename` 选择。
+- **联合类型（union）结构体约定**：
+  - 除 `__typename` 外，**只接受「匿名嵌入的命名 struct」作为分支**（嵌入类型必须是已命名的 `struct`），以便与 `encoding/json` 反序列化结构一致；
+  - 联合分支**不能**使用匿名 `struct`；
+  - 若需让 GraphQL 的 `... on` 使用与 Go 类型名不同的名字，在**嵌入的那一行**加 `type=...`，例如：  
+
+    ```go
+    YourBranchType `graphql:",type=YourGraphQLTypeName"`
+    ```
 - `graphql:"field(arg1:1,arg2:$,arg3:$value3,...)"`：支持参数，值中 `$` 作为占位符自动生成变量名，可用 `query:$custom` 指定变量名。
 - `graphql:"field(arg:$:Type1,arg2:$varName:Type2)"`：支持为变量指定类型，格式为 `$:Type`（匿名占位符）或 `$varName:Type`（自定义变量名），如 `query:$:String!`、`id:$id:Int!`。
 
-> **字段平铺**：如需将嵌套结构体的字段平铺到父级，使用 Go 的匿名嵌入即可。匿名嵌入在 GraphQL 查询和 `encoding/json` 反序列化中都表现为扁平化，完全兼容。
+> **字段平铺**：将嵌套结构体的字段平铺到父级，使用 **Go 匿名嵌入** 即可。当前实现中，**仅匿名字段**会作为内联展开；不再依赖单独的 `inline` 标记。匿名嵌入在查询生成与 `encoding/json` 反序列化中均为扁平结构，与常见用法一致。
 
 ## 输出结构
 - `Graphql.Body`：完整查询体字符串。
