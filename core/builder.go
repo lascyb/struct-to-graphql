@@ -75,6 +75,11 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 	}
 	// 遍历所有字段，递归构建 GraphQL 查询字符串
 	currentPathsCount := len(g.currentPaths)
+	defer func() {
+		// 使用 defer 确保路径栈始终被恢复，即使在异常情况下也不会导致状态污染
+		g.currentPaths = g.currentPaths[:currentPathsCount]
+	}()
+
 	for _, field := range typeParser.Fields {
 		g.currentPaths = append(g.currentPaths[:currentPathsCount], field.FieldName)
 		// 处理联合类型：使用 GraphQL 的 inline fragment 语法 "... on TypeName"
@@ -129,7 +134,6 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 			buf.WriteString(set)
 		}
 	}
-	g.currentPaths = g.currentPaths[:currentPathsCount]
 	// 闭合花括号，与开头的花括号对应
 	if !inlineType || isUnionSubType {
 		buf.WriteString("\n")
@@ -138,16 +142,21 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 
 		// 处理重用类型：当类型被多次引用且不是顶级类型时，应封装为 Fragment（匿名结构体无法生成 Fragment，跳过）
 		if typeParser.Reused > 1 && typeParser.source.Name() != "" {
+			// 生成 Fragment 名称时，使用单独的 result 切片来避免修改原始 split 导致的索引混乱
 			split := strings.Split(typeParser.source.String(), ".")
-			for i, s := range split {
+			var result []string
+			for _, s := range split {
 				if s == "" {
 					continue
 				}
+				// 首字母大写
 				runes := []rune(s)
-				runes = append([]rune{unicode.ToUpper(rune(s[0]))}, runes[1:]...)
-				split[i] = string(runes)
+				if len(runes) > 0 {
+					runes[0] = unicode.ToUpper(runes[0])
+				}
+				result = append(result, string(runes))
 			}
-			fragmentName := strings.Join(split, "")
+			fragmentName := strings.Join(result, "")
 			fragmentType := typeParser.source.Name()
 			fragment := fmt.Sprintf("fragment %s on %s%s", fragmentName, fragmentType, buf.String())
 			g.FragmentMap[typeParser.source] = &Fragment{
