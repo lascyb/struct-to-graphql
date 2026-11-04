@@ -1,17 +1,12 @@
 package test_graphql
 
 import (
-	"strings"
 	"testing"
 
-	graphql "github.com/lascyb/struct-to-graphql"
+	"github.com/lascyb/struct-to-graphql/test/testutil"
 )
 
-// 测试 Mutation
-type ProductInput struct {
-	Title string `json:"title" graphql:"title"`
-	Price string `json:"price" graphql:"price"`
-}
+// ========== Mutation ==========
 
 type ProductPayload struct {
 	Product struct {
@@ -28,35 +23,38 @@ type MutationStruct struct {
 	ProductCreate ProductPayload `json:"productCreate" graphql:"productCreate(input:$input:ProductInput!)"`
 }
 
-func TestMutation(t *testing.T) {
-	exec, err := graphql.Marshal(MutationStruct{})
-	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
-	}
-
-	// 使用 Mutation 方法
-	mutation, err := exec.Mutation("ProductCreate")
-	if err != nil {
-		t.Fatalf("Mutation failed: %v", err)
-	}
-
-	t.Logf("Generated Mutation:\n%s", mutation)
-
-	// 验证 mutation 关键字
-	if !strings.HasPrefix(strings.TrimSpace(mutation), "mutation") {
-		t.Error("Mutation should start with 'mutation' keyword")
-	}
-
-	// 验证变量
-	if !strings.Contains(mutation, "$input:ProductInput!") {
-		t.Error("Missing input variable")
-	}
-
-	// 验证返回字段
-	if !strings.Contains(mutation, "productCreate") {
-		t.Error("Missing productCreate field")
-	}
-	if !strings.Contains(mutation, "userErrors") {
-		t.Error("Missing userErrors field")
-	}
+func TestMutationOutput(t *testing.T) {
+	t.Parallel()
+	runOutputCases(t, []outputCase{
+		{name: "Mutation", v: MutationStruct{}, op: testutil.OpMutation, opName: "ProductCreate", want: `mutation ProductCreate($input:ProductInput!) {
+  productCreate(input:$input){
+    product{
+      id
+      title
+    }
+    userErrors{
+      field
+      message
+    }
+  }
+}`},
+		// 匿名操作：name 为空时只输出操作关键字
+		{name: "AnonymousMutation", v: MutationStruct{}, op: testutil.OpMutation, want: `mutation($input:ProductInput!) {
+  productCreate(input:$input){
+    product{
+      id
+      title
+    }
+    userErrors{
+      field
+      message
+    }
+  }
+}`},
+		{name: "AnonymousQuery", v: AliasQuery{}, want: `query {
+  id
+  displayName:name
+  userEmail:email
+}`},
+	})
 }

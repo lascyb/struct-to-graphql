@@ -3,28 +3,36 @@ package graphql
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"reflect"
-	"slices"
 	"strings"
 
 	"github.com/lascyb/struct-to-graphql/core"
 )
 
+// Variable 生成结果中的变量定义（core.Variable 的别名，便于直接引用）
+type Variable = core.Variable
+
+// Fragment 生成结果中的 Fragment 定义（core.Fragment 的别名，便于直接引用）
+type Fragment = core.Fragment
+
 // Graphql GraphQL 查询结构
 type Graphql struct {
 	Body      string           // GraphQL 查询主体内容
-	Variables []*core.Variable // 层次化变量统计数组（按路径组织）
-	Fragments []*core.Fragment // 复用结构模块数组
+	Variables []*core.Variable // 变量数组，按首次出现的顺序排列
+	Fragments []*core.Fragment // 复用结构模块数组，按首次使用的顺序排列
 }
 
 func Marshal(v any) (*Graphql, error) {
 	if v == nil {
 		return nil, errors.New("struct to parse cannot be nil")
 	}
-	parser, err := core.NewParser().ParseType(reflect.TypeOf(v))
+	typ := reflect.TypeOf(v)
+	parser, err := core.NewParser().ParseType(typ)
 	if err != nil {
 		return nil, err
+	}
+	if parser == nil {
+		return nil, fmt.Errorf("graphql: %s has no queryable fields (no exported fields, or all fields are skipped)", typ)
 	}
 
 	builder := core.NewBuilder()
@@ -35,8 +43,8 @@ func Marshal(v any) (*Graphql, error) {
 
 	return &Graphql{
 		Body:      body,
-		Variables: slices.Collect(maps.Values(builder.VariableMap)),
-		Fragments: slices.Collect(maps.Values(builder.FragmentMap)),
+		Variables: builder.Variables(),
+		Fragments: builder.Fragments(),
 	}, nil
 }
 func (g *Graphql) build(operation, name string) (string, error) {
@@ -59,7 +67,11 @@ func (g *Graphql) build(operation, name string) (string, error) {
 		}
 		def := fmt.Sprintf("%s:%s", v.Name, v.Type)
 		if v.HasDefault {
-			def += "=" + formatVariableDefault(v.DefaultValue)
+			if v.Default != "" {
+				def += "=" + v.Default
+			} else {
+				def += "=" + core.FormatValue(v.DefaultValue)
+			}
 		}
 		varDefs = append(varDefs, def)
 	}
@@ -94,29 +106,14 @@ func (g *Graphql) Mutation(name string) (string, error) {
 	return g.build("mutation", name)
 }
 
-// formatVariableDefault 将变量默认值格式化为 GraphQL 变量定义中的写法（如 "value"、123、[1,2,3]）
-func formatVariableDefault(v interface{}) string {
-	if v == nil {
-		return "null"
-	}
-	switch val := v.(type) {
-	case string:
-		return `"` + strings.ReplaceAll(val, `"`, `\"`) + `"`
-	case bool:
-		if val {
-			return "true"
-		}
-		return "false"
-	case []interface{}:
-		parts := make([]string, 0, len(val))
-		for _, e := range val {
-			parts = append(parts, formatVariableDefault(e))
-		}
-		return "[" + strings.Join(parts, ", ") + "]"
-	default:
-		return fmt.Sprint(v)
-	}
+// Subscription 组装完整的 GraphQL 订阅字符串
+// name: 订阅名称，如 "OnCommentAdded"、"OrderStatusChanged" 等
+// 返回: 完整的 GraphQL 订阅字符串，包含操作声明、变量定义、查询体和 Fragments
+func (g *Graphql) Subscription(name string) (string, error) {
+	return g.build("subscription", name)
 }
+
+// SetIndent 设置生成结果的单级缩进（默认两个空格），并发安全；对之后开始的 Marshal 调用生效
 func SetIndent(val string) {
 	core.SetIndent(val)
 }

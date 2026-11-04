@@ -7,7 +7,6 @@ import (
 type Parser struct {
 	types    map[reflect.Type]*TypeParser
 	visiting map[reflect.Type]bool // 循环引用检测
-	root     *TypeParser
 }
 
 func NewParser() *Parser {

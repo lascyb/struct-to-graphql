@@ -1,0 +1,22 @@
+fragment DetAuthor on DetAuthor{
+  id
+  avatar{ ...DetImage }
+}
+fragment DetImage on DetImage{
+  url(width:$width,height:$height,format:WEBP,crop:CENTER,scale:2)
+}
+fragment DetComment on DetComment{
+  body(format:$bodyFormat,truncate:$posts_nodes_comments_body_truncate,locale:"zh-CN")
+  author{ ...DetAuthor }
+}
+query Deterministic($first:Int!,$posts_after:String,$query:String,$sortKey:PostSortKeys=UPDATED_AT,$savedSearchId:ID,$width:Int,$height:Int,$commentsLast:Int=5,$posts_nodes_comments_query:String,$before:String,$bodyFormat:Format=MARKDOWN,$posts_nodes_comments_body_truncate:Int,$pinnedId:ID!,$size:Int=100) {
+  posts(first:$first,after:$posts_after,query:$query,reverse:true,sortKey:$sortKey,savedSearchId:$savedSearchId){
+    nodes{
+      title
+      author{ ...DetAuthor }
+      comments(last:$commentsLast,sortKey:CREATED_AT,reverse:false,query:$posts_nodes_comments_query,before:$before){ ...DetComment }
+    }
+  }
+  pinned(id:$pinnedId){ ...DetComment }
+  cover(size:$size){ ...DetImage }
+}
