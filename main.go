@@ -3,9 +3,7 @@ package graphql
 import (
 	"errors"
 	"fmt"
-	"maps"
 	"reflect"
-	"slices"
 	"strings"
 
 	"github.com/lascyb/struct-to-graphql/core"
@@ -14,8 +12,8 @@ import (
 // Graphql GraphQL 查询结构
 type Graphql struct {
 	Body      string           // GraphQL 查询主体内容
-	Variables []*core.Variable // 层次化变量统计数组（按路径组织）
-	Fragments []*core.Fragment // 复用结构模块数组
+	Variables []*core.Variable // 变量数组，按首次出现的顺序排列
+	Fragments []*core.Fragment // 复用结构模块数组，按首次使用的顺序排列
 }
 
 func Marshal(v any) (*Graphql, error) {
@@ -35,8 +33,8 @@ func Marshal(v any) (*Graphql, error) {
 
 	return &Graphql{
 		Body:      body,
-		Variables: slices.Collect(maps.Values(builder.VariableMap)),
-		Fragments: slices.Collect(maps.Values(builder.FragmentMap)),
+		Variables: builder.Variables(),
+		Fragments: builder.Fragments(),
 	}, nil
 }
 func (g *Graphql) build(operation, name string) (string, error) {

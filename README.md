@@ -48,7 +48,7 @@ query GetData($list_query:String!,$id:Int!) {
     id
     name
   }
-  list(query:$list_query,id:$id,first:10){
+  list(first:10,query:$list_query,id:$id){
     nodes{
       name
     }
@@ -89,8 +89,10 @@ query GetData($list_query:String!,$id:Int!) {
 
 ## 输出结构
 - `Graphql.Body`：完整查询体字符串。
-- `Graphql.Variables`：占位符变量列表（Name 为 `$xxx`，Path 表示层级路径，Type 为变量类型如 `String!`、`Int!`）。
-- `Graphql.Fragments`：去重生成的 Fragment 定义。
+- `Graphql.Variables`：占位符变量列表（Name 为 `$xxx`，Path 表示层级路径，Type 为变量类型如 `String!`、`Int!`），按首次出现的顺序排列。
+- `Graphql.Fragments`：去重生成的 Fragment 定义，按首次使用的顺序排列。
+
+> **输出稳定**：字段参数按 tag 中的书写顺序输出，变量定义按首次出现的顺序输出，Fragment 按首次使用的顺序输出；同一结构体多次生成的结果完全一致，便于快照测试与缓存。
 - `Graphql.Query(name string)`：组装完整的 GraphQL 查询字符串，包含操作声明、变量定义、查询体和 Fragments。
 - `Graphql.Mutation(name string)`：组装完整的 GraphQL 变更字符串，包含操作声明、变量定义、查询体和 Fragments。
 

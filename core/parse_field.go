@@ -26,11 +26,12 @@ type Arg struct {
 // TagValue 包装 tagkit.TagValue，Args 的 value 使用本包的 Arg 以携带 Type
 type TagValue struct {
 	*tagkit.TagValue
-	Args map[string]*Arg
+	Args    map[string]*Arg
+	ArgKeys []string // 参数名列表，按 tag 原文中的书写顺序排列，用于稳定输出
 }
 
 func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
-	tagValue, err := parseFieldTagValue(field.Tag)
+	tagValue, rawTag, err := parseFieldTagValue(field.Tag)
 	if err != nil {
 		return nil, err
 	}
@@ -79,26 +80,14 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 	var fieldTagValue *TagValue = nil
 
 	if tagValue != nil {
+		args, err := convertArgs(tagValue.Args)
+		if err != nil {
+			return nil, err
+		}
 		fieldTagValue = &TagValue{
 			TagValue: tagValue,
-			Args:     make(map[string]*Arg),
-		}
-		for name, argVal := range tagValue.Args {
-			item := &Arg{ArgValue: argVal}
-			if argVal.Type == "variable" {
-				item.GraphQLType = argVal.VarType
-			}
-			if s, ok := argVal.Value.(string); ok && argVal.Type == "literal" {
-				raw := strings.TrimSpace(s)
-				if raw == "" {
-					return nil, fmt.Errorf("参数值不能定义为空")
-				}
-				// 字面量参数中的 ":" 仅视为普通字符，不做 value:type 拆分。
-				// 变量类型声明必须使用 $ 占位符语法（如 $:String! / $id:Int!）。
-				// 这确保了参数处理的一致性与可预测性。
-				item.Value = raw
-			}
-			fieldTagValue.Args[name] = item
+			Args:     args,
+			ArgKeys:  orderedArgKeys(rawTag, args),
 		}
 	}
 
@@ -112,21 +101,46 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 	}, nil
 }
 
-func parseFieldTagValue(tag reflect.StructTag) (*tagkit.TagValue, error) {
+// parseFieldTagValue 解析字段的 graphql tag（缺省时回退到 json tag，仅取字段名），同时返回 tag 原文
+func parseFieldTagValue(tag reflect.StructTag) (*tagkit.TagValue, string, error) {
 	value, ok := tag.Lookup("graphql")
 	if !ok {
 		value, ok = tag.Lookup("json")
 		if ok {
 			tagValue, err := tagkit.ParseTagValue(value)
 			if err != nil {
-				return nil, err
+				return nil, "", err
 			}
 			return &tagkit.TagValue{
 				Name: tagValue.Name,
-			}, nil
+			}, "", nil
 		}
 	}
-	return tagkit.ParseTagValue(value)
+	tagValue, err := tagkit.ParseTagValue(value)
+	return tagValue, value, err
+}
+
+// convertArgs 将 tagkit 解析出的参数转换为本包的 Arg，并校验字面量参数
+func convertArgs(src map[string]tagkit.ArgValue) (map[string]*Arg, error) {
+	args := make(map[string]*Arg, len(src))
+	for name, argVal := range src {
+		item := &Arg{ArgValue: argVal}
+		if argVal.Type == "variable" {
+			item.GraphQLType = argVal.VarType
+		}
+		if s, ok := argVal.Value.(string); ok && argVal.Type == "literal" {
+			raw := strings.TrimSpace(s)
+			if raw == "" {
+				return nil, fmt.Errorf("参数值不能定义为空")
+			}
+			// 字面量参数中的 ":" 仅视为普通字符，不做 value:type 拆分。
+			// 变量类型声明必须使用 $ 占位符语法（如 $:String! / $id:Int!）。
+			// 这确保了参数处理的一致性与可预测性。
+			item.Value = raw
+		}
+		args[name] = item
+	}
+	return args, nil
 }
 
 func hasFlag(flags []tagkit.FlagInfo, name string) bool {

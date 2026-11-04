@@ -51,7 +51,7 @@ func main() {
     id
     name
   }
-  list(query:$list_query,id:$id,first:10){
+  list(first:10,query:$list_query,id:$id){
     nodes{
       name
     }
@@ -67,7 +67,7 @@ query GetData($list_query:String!,$id:Int!) {
     id
     name
   }
-  list(query:$list_query,id:$id,first:10){
+  list(first:10,query:$list_query,id:$id){
     nodes{
       name
     }
@@ -108,8 +108,10 @@ Run tests: `go test ./test/...`, or open the corresponding `_test.go` files for 
 
 ## Output Structure
 - `Graphql.Body`: Complete query body string.
-- `Graphql.Variables`: Placeholder variable list (Name is `$xxx`, Path represents the hierarchical path, Type is the variable type such as `String!`, `Int!`).
-- `Graphql.Fragments`: Deduplicated generated Fragment definitions.
+- `Graphql.Variables`: Placeholder variable list (Name is `$xxx`, Path represents the hierarchical path, Type is the variable type such as `String!`, `Int!`), in order of first appearance.
+- `Graphql.Fragments`: Deduplicated generated Fragment definitions, in order of first use.
+
+> **Deterministic output**: field arguments are emitted in the order they are written in the tag, variable definitions in order of first appearance, and fragments in order of first use; generating the same struct repeatedly always yields identical output, which makes snapshot testing and caching easy.
 - `Graphql.Query(name string)`: Assembles a complete GraphQL query string, including operation declaration, variable definitions, query body, and Fragments.
 - `Graphql.Mutation(name string)`: Assembles a complete GraphQL mutation string, including operation declaration, variable definitions, query body, and Fragments.
 

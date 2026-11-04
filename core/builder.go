@@ -8,9 +8,11 @@ import (
 )
 
 type Builder struct {
-	FragmentMap  map[reflect.Type]*Fragment // Fragment 映射，用于去重
-	VariableMap  map[string]*Variable       // 变量映射，用于去重
-	currentPaths []string
+	FragmentMap   map[reflect.Type]*Fragment // Fragment 映射，用于去重
+	VariableMap   map[string]*Variable       // 变量映射，用于去重
+	currentPaths  []string
+	fragmentOrder []reflect.Type // Fragment 首次使用的顺序，保证输出稳定
+	variableOrder []string       // 变量首次出现的顺序，保证输出稳定
 }
 
 // Fragment GraphQL Fragment
@@ -35,6 +37,28 @@ func NewBuilder() *Builder {
 		VariableMap:  make(map[string]*Variable),
 		currentPaths: []string{},
 	}
+}
+
+// Variables 按首次出现的顺序返回所有变量
+func (g *Builder) Variables() []*Variable {
+	result := make([]*Variable, 0, len(g.variableOrder))
+	for _, name := range g.variableOrder {
+		if v, ok := g.VariableMap[name]; ok {
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
+// Fragments 按首次使用的顺序返回所有 Fragment
+func (g *Builder) Fragments() []*Fragment {
+	result := make([]*Fragment, 0, len(g.fragmentOrder))
+	for _, typ := range g.fragmentOrder {
+		if f, ok := g.FragmentMap[typ]; ok {
+			result = append(result, f)
+		}
+	}
+	return result
 }
 
 func (g *Builder) Build(typeParser *TypeParser) (string, error) {
@@ -65,6 +89,10 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 		}
 		if !inlineType {
 			level = 0
+		}
+		if !inlineType || isUnionSubType {
+			// 在开始构建时登记顺序，使外层 Fragment 排在其内部引用的 Fragment 之前（按首次使用顺序）
+			g.fragmentOrder = append(g.fragmentOrder, typeParser.source)
 		}
 	}
 	buf := new(strings.Builder)
@@ -177,7 +205,8 @@ func (g *Builder) buildFieldArgs(field *FieldParser) (string, error) {
 	}
 
 	parts := make([]string, 0, len(field.TagValue.Args))
-	for key, arg := range field.TagValue.Args {
+	for _, key := range field.TagValue.ArgKeys {
+		arg := field.TagValue.Args[key]
 		value, err := g.buildArgumentValue(key, arg)
 		if err != nil {
 			return "", err
@@ -226,6 +255,7 @@ func (g *Builder) buildArgumentValue(key string, arg *Arg) (string, error) {
 			}
 			g.VariableMap[varName].Paths = append(g.VariableMap[varName].Paths, strings.Join(g.currentPaths, "/"))
 		} else {
+			g.variableOrder = append(g.variableOrder, varName)
 			g.VariableMap[varName] = &Variable{
 				Name:         "$" + varName,
 				Paths:        []string{strings.Join(g.currentPaths, "/")},
