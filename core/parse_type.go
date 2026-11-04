@@ -53,7 +53,7 @@ func (p *Parser) ParseType(typ reflect.Type) (*TypeParser, error) {
 		if fieldParser == nil {
 			continue
 		}
-		if fieldParser.FieldName == "__typename" && fieldParser.TagValue != nil && hasFlag(fieldParser.TagValue.Flags, "union") {
+		if fieldParser.FieldName == "__typename" && fieldParser.TagValue != nil && fieldParser.TagValue.HasFlag("union") {
 			isUnionType = true
 		}
 		fields = append(fields, fieldParser)

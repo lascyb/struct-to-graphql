@@ -1,9 +1,12 @@
 package core
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/lascyb/tagkit"
 )
 
 func TestCamelToSnake(t *testing.T) {
@@ -40,11 +43,13 @@ type builderFieldTag struct {
 	A string `graphql:"a(x:'\\"`
 }
 
+// 以反斜杠结尾的未闭合字符串（tagkit v1.0.6 会 panic）应返回带字段名的 *tagkit.SyntaxError
 func TestParseField_InvalidTagDoesNotPanic(t *testing.T) {
 	t.Parallel()
 	_, err := NewParser().ParseType(reflect.TypeOf(builderFieldTag{}))
-	if err == nil || !strings.Contains(err.Error(), "field [A]: invalid tag") {
-		t.Fatalf("expected invalid tag error, got %v", err)
+	var se *tagkit.SyntaxError
+	if !errors.As(err, &se) || !strings.Contains(err.Error(), "field [A]: unterminated string") {
+		t.Fatalf("expected unterminated string syntax error, got %v", err)
 	}
 }
 

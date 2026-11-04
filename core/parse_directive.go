@@ -25,15 +25,12 @@ type Directive struct {
 // parseDirectives 从 tag 标记位中解析所有 directive='...' 声明
 // 指令值使用与字段调用相同的 tagkit 语法：name(arg:value, ...)，可选前导 @；
 // 参数值支持字面量以及 $、$name、$:Type、$name:Type（可带默认值）等变量占位符。
-func parseDirectives(flags []tagkit.FlagInfo) ([]*Directive, error) {
+func parseDirectives(tv *tagkit.TagValue) ([]*Directive, error) {
 	var result []*Directive
 	seen := make(map[string]bool)
-	for _, flag := range flags {
-		if flag.Name != directiveFlag {
-			continue
-		}
+	for _, flag := range tv.FlagsNamed(directiveFlag) {
 		raw, ok := flag.Value.(string)
-		if flag.IsBoolean || !ok {
+		if !flag.HasValue() || !ok {
 			return nil, fmt.Errorf("directive 需要以字符串形式声明，如 directive='include(if:$show:Boolean!)'，实际为 %v", flag.Value)
 		}
 		directive, err := parseDirective(raw)
@@ -57,7 +54,7 @@ func parseDirective(raw string) (*Directive, error) {
 	if src == "" {
 		return nil, fmt.Errorf("directive 不能为空")
 	}
-	tv, err := parseTagValue(src)
+	tv, err := tagkit.ParseTagValue(src)
 	if err != nil {
 		return nil, fmt.Errorf("directive [%s] 解析失败: %w", raw, err)
 	}
@@ -67,7 +64,7 @@ func parseDirective(raw string) (*Directive, error) {
 	if !directiveNameRe.MatchString(tv.Name) || !strings.HasPrefix(src, tv.Name) {
 		return nil, fmt.Errorf("directive [%s] 缺少合法的指令名", raw)
 	}
-	args, keys, err := newArgs(src, tv.Args)
+	args, keys, err := newArgs(tv)
 	if err != nil {
 		return nil, fmt.Errorf("directive [%s]: %w", raw, err)
 	}

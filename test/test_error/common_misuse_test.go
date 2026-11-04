@@ -1,10 +1,12 @@
 package test_error
 
 import (
+	"errors"
 	"testing"
 
 	graphql "github.com/lascyb/struct-to-graphql"
 	"github.com/lascyb/struct-to-graphql/test/testutil"
+	"github.com/lascyb/tagkit"
 )
 
 // ========== 常见错误用法 ==========
@@ -122,7 +124,7 @@ type InvalidTagSyntax struct {
 	} `graphql:"items(query::String!)"`
 }
 
-// 以反斜杠结尾的未闭合字符串（tagkit 内部会 panic），应返回错误而不是 panic
+// 以反斜杠结尾的未闭合字符串（tagkit v1.0.6 内部会 panic），应返回错误而不是 panic
 type UnterminatedString struct {
 	Items []struct {
 		ID string `graphql:"id"`
@@ -177,9 +179,9 @@ func TestMarshalErrors(t *testing.T) {
 		{"UnionBranchVariableConflict", UnionBranchVariableConflict{}, []string{"failed to build type for field [content]", "failed to build type for field [NestedConflictBranch]", "类型不统一"}},
 		{"UnionDirectiveVariableConflict", UnionDirectiveVariableConflict{}, []string{"directive @include on field [UnionDirectiveConflictBranch]", "[Int]<==>[Boolean!]"}},
 		{"EmptyLiteralArgument", EmptyLiteralArgument{}, []string{"field [Items]", "参数值不能定义为空"}},
-		{"InvalidTagSyntax", InvalidTagSyntax{}, []string{"field [Items]", "unexpected token"}},
-		{"UnterminatedString", UnterminatedString{}, []string{"field [Items]", "invalid tag"}},
-		{"DuplicateArgument", DuplicateArgument{}, []string{"参数 first 重复声明"}},
+		{"InvalidTagSyntax", InvalidTagSyntax{}, []string{"field [Items]", "expected literal value", "at position 12"}},
+		{"UnterminatedString", UnterminatedString{}, []string{"field [Items]", "unterminated string at position 12"}},
+		{"DuplicateArgument", DuplicateArgument{}, []string{"field [Items]", `duplicate argument "first" at position 14`}},
 		{"SelfReference", CycleNode{}, []string{"circular reference detected for type test_error.CycleNode"}},
 		{"MutualReference", CycleA{}, []string{"circular reference detected for type test_error.CycleA"}},
 		{"EmptyStruct", struct{}{}, []string{"struct {} has no queryable fields"}},
@@ -194,6 +196,32 @@ func TestMarshalErrors(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			testutil.AssertMarshalError(t, c.v, c.want...)
+		})
+	}
+}
+
+// tag 语法错误经 Marshal 层层包装后仍可通过 errors.As 取得 *tagkit.SyntaxError（含出错位置）
+func TestMarshalErrors_SyntaxErrorType(t *testing.T) {
+	t.Parallel()
+	for name, c := range map[string]struct {
+		v   any
+		pos int
+	}{
+		"InvalidTagSyntax":   {InvalidTagSyntax{}, 12},
+		"UnterminatedString": {UnterminatedString{}, 12},
+		"DuplicateArgument":  {DuplicateArgument{}, 14},
+		"DirectiveDuplicate": {DirectiveDuplicateArg{}, 13},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err := graphql.Marshal(c.v)
+			var se *tagkit.SyntaxError
+			if !errors.As(err, &se) {
+				t.Fatalf("err = %v, want *tagkit.SyntaxError", err)
+			}
+			if se.Pos != c.pos {
+				t.Fatalf("Pos = %d, want %d (%v)", se.Pos, c.pos, err)
+			}
 		})
 	}
 }

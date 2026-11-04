@@ -35,7 +35,7 @@ type TagValue struct {
 
 // ParseField 解析单个结构体字段；字段被 tag 标记为跳过（graphql:"-" 或 json:"-"）时返回 nil, nil
 func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
-	tagValue, rawTag, skip, err := parseFieldTagValue(field.Tag)
+	tagValue, skip, err := parseFieldTagValue(field.Tag)
 	if err != nil {
 		return nil, fmt.Errorf("field [%s]: %w", field.Name, err)
 	}
@@ -47,16 +47,17 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 		if tagValue.Name != "" {
 			fieldName = tagValue.Name
 		} else {
-			// tagkit v1 将 "name" 解析为布尔标记而非字段调用，Name 为空；仅一个布尔标记时用其 Name 作为字段名
+			// tag 以逗号开头（如 ",name"）时 tagkit 不产生字段调用，Name 为空；
+			// 此时若只有一个裸标记，沿用其名字作为字段名（兼容旧写法）
 			if len(tagValue.Flags) == 1 && tagValue.Flags[0].IsBoolean {
 				fieldName = tagValue.Flags[0].Name
 			}
 			// "__typename,union" 解析为两个布尔标记，需补全为 __typename 以便联合类型检测与输出
-			if hasFlag(tagValue.Flags, "union") {
+			if tagValue.HasFlag("union") {
 				fieldName = "__typename"
 			}
 		}
-		if f := flagByName(tagValue.Flags, "alias"); f != nil && !f.IsBoolean && f.Value != nil {
+		if f, ok := tagValue.Flag("alias"); ok && f.HasValue() {
 			if alias, ok := f.Value.(string); ok && alias != "" {
 				fieldName = alias + ":" + fieldName
 			}
@@ -78,7 +79,7 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 	}
 	typeName := fieldType.Name()
 	if tagValue != nil {
-		if f := flagByName(tagValue.Flags, "type"); f != nil && !f.IsBoolean && f.Value != nil {
+		if f, ok := tagValue.Flag("type"); ok && f.HasValue() {
 			if customType, ok := f.Value.(string); ok && strings.TrimSpace(customType) != "" {
 				typeName = strings.TrimSpace(customType)
 			}
@@ -89,7 +90,7 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 	var directives []*Directive
 
 	if tagValue != nil {
-		args, keys, err := newArgs(rawTag, tagValue.Args)
+		args, keys, err := newArgs(tagValue)
 		if err != nil {
 			return nil, fmt.Errorf("field [%s]: %w", field.Name, err)
 		}
@@ -98,7 +99,7 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 			Args:     args,
 			ArgKeys:  keys,
 		}
-		directives, err = parseDirectives(tagValue.Flags)
+		directives, err = parseDirectives(tagValue)
 		if err != nil {
 			return nil, fmt.Errorf("field [%s]: %w", field.Name, err)
 		}
@@ -115,92 +116,63 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 	}, nil
 }
 
-// parseFieldTagValue 解析字段的 graphql tag，同时返回 tag 原文；skip 为 true 表示该字段不参与生成。
+// parseFieldTagValue 解析字段的 graphql tag；skip 为 true 表示该字段不参与生成。
 //   - graphql:"-" 跳过字段；
 //   - 未声明 graphql tag 时回退到 json tag，与 encoding/json 一致：仅取逗号前的名字作为字段名，
 //     json:"-" 跳过字段（json:"-," 表示 key 为 "-"，不跳过），名字为空（如 json:",omitempty"）时使用 Go 字段名。
-func parseFieldTagValue(tag reflect.StructTag) (tagValue *tagkit.TagValue, raw string, skip bool, err error) {
+func parseFieldTagValue(tag reflect.StructTag) (tagValue *tagkit.TagValue, skip bool, err error) {
 	value, ok := tag.Lookup("graphql")
 	if !ok {
 		jsonTag, ok := tag.Lookup("json")
 		if !ok {
-			return nil, "", false, nil
+			return nil, false, nil
 		}
 		if jsonTag == "-" {
-			return nil, "", true, nil
+			return nil, true, nil
 		}
 		name, _, _ := strings.Cut(jsonTag, ",")
-		return &tagkit.TagValue{Name: name}, "", false, nil
+		return &tagkit.TagValue{Name: name}, false, nil
 	}
 	if strings.TrimSpace(value) == "-" {
-		return nil, "", true, nil
+		return nil, true, nil
 	}
-	tagValue, err = parseTagValue(value)
-	return tagValue, value, false, err
+	tagValue, err = tagkit.ParseTagValue(value)
+	return tagValue, false, err
 }
 
-// newArgs 将 tagkit 解析出的参数转换为本包的 Arg，并结合 tag 原文扫描结果确定：
-//   - 参数的书写顺序（ArgKeys）；
+// newArgs 将 tagkit 解析出的参数转换为本包的 Arg，按书写顺序（tv.ArgKeys）返回参数名列表，并确定：
 //   - 字面量参数的 GraphQL 写法：带引号的字符串输出为 GraphQL 字符串，裸标识符原样输出（枚举值），
 //     数字 / 布尔 / null 原样输出，列表逐元素按相同规则输出；
 //   - 变量默认值的 GraphQL 写法：String / ID 类型变量的裸标识符默认值按字符串输出，其余同上。
-func newArgs(raw string, src map[string]tagkit.ArgValue) (map[string]*Arg, []string, error) {
-	scanned := scanCallArgs(raw)
-	byKey := make(map[string]*scannedArg, len(scanned))
-	order := make([]string, 0, len(scanned))
-	for i := range scanned {
-		a := &scanned[i]
-		if _, dup := byKey[a.Key]; dup {
-			return nil, nil, fmt.Errorf("参数 %s 重复声明", a.Key)
-		}
-		byKey[a.Key] = a
-		order = append(order, a.Key)
-	}
-	args := make(map[string]*Arg, len(scanned))
-	for name, argVal := range src {
-		sa := byKey[name]
-		if sa == nil {
-			return nil, nil, fmt.Errorf("参数 %s 无法从 tag 原文中定位", name)
-		}
-		item := &Arg{ArgValue: argVal}
-		if argVal.Type == "variable" {
-			item.GraphQLType = argVal.VarType
-			if sa.Default != nil {
-				item.DefaultLiteral = sa.Default.render(isStringLikeType(argVal.VarType))
+//
+// 语法错误（重复参数、非法字面量、默认值与类型不符等）已由 tagkit 报告。
+func newArgs(tv *tagkit.TagValue) (map[string]*Arg, []string, error) {
+	ordered := tv.OrderedArgs()
+	args := make(map[string]*Arg, len(ordered))
+	keys := make([]string, 0, len(ordered))
+	for _, a := range ordered {
+		item := &Arg{ArgValue: a.ArgValue}
+		if a.Type == tagkit.ArgTypeVariable {
+			item.GraphQLType = a.VarType
+			if a.Default != nil {
+				item.DefaultLiteral = renderLiteral(a.Default, isStringLikeType(a.VarType))
 			}
 		} else {
-			value := *sa.Value
-			if value.Kind == kindString {
+			lit := a.Literal
+			if lit.Kind == tagkit.KindString {
 				// 字符串字面量去除首尾空白（与旧版本行为一致），全空白视为未填写
-				value.Text = strings.TrimSpace(value.Text)
-				if value.Text == "" {
+				text := strings.TrimSpace(lit.Value.(string))
+				if text == "" {
 					return nil, nil, fmt.Errorf("参数值不能定义为空")
 				}
-				item.Value = value.Text
+				item.Value = text
+				item.Literal = quoteGraphQLString(text)
+			} else {
+				item.Literal = renderLiteral(lit, false)
 			}
-			item.Literal = value.render(false)
 		}
-		args[name] = item
+		args[a.Name] = item
+		keys = append(keys, a.Name)
 	}
-	// tagkit 会丢弃列表字面量参数（如 ids:[1,2]），这里根据扫描结果补回
-	for _, a := range scanned {
-		if _, ok := args[a.Key]; !ok && a.Value != nil && a.Value.Kind == kindList {
-			literal := a.Value.render(false)
-			args[a.Key] = &Arg{ArgValue: tagkit.ArgValue{Type: "literal", Value: literal}, Literal: literal}
-		}
-	}
-	return args, orderedArgKeys(order, args), nil
-}
-
-func hasFlag(flags []tagkit.FlagInfo, name string) bool {
-	return flagByName(flags, name) != nil
-}
-
-func flagByName(flags []tagkit.FlagInfo, name string) *tagkit.FlagInfo {
-	for i := range flags {
-		if flags[i].Name == name {
-			return &flags[i]
-		}
-	}
-	return nil
+	return args, keys, nil
 }

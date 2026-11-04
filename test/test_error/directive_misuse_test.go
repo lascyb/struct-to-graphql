@@ -101,7 +101,7 @@ func TestDirectiveMisuse(t *testing.T) {
 		{"EmptyValue", DirectiveEmptyValue{}, []string{"不能为空"}},
 		{"MultipleInOne", DirectiveMultipleInOne{}, []string{"field [ID]", "field must be unique"}},
 		{"ExtraFlag", DirectiveExtraFlag{}, []string{"field [ID]", "只能包含一个指令调用"}},
-		{"DuplicateArg", DirectiveDuplicateArg{}, []string{"directive [cached(ttl:1,ttl:2)]", "参数 ttl 重复声明"}},
+		{"DuplicateArg", DirectiveDuplicateArg{}, []string{"directive [cached(ttl:1,ttl:2)]", `duplicate argument "ttl" at position 13`}},
 		{"EmptyArg", DirectiveEmptyArg{}, []string{"参数值不能定义为空"}},
 		{"MissingName", DirectiveMissingName{}, []string{"缺少合法的指令名"}},
 		{"IncludeWithoutIf", DirectiveIncludeWithoutIf{}, []string{"必须且只能包含参数 if"}},
