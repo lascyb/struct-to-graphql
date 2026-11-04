@@ -199,7 +199,7 @@ query GetUser($id:ID!,$withUser:Boolean=true,$withEmail:Boolean!,$hideFriends:Bo
 
 ## Dependency upgrade: tagkit v1.1.0 (behavior changes)
 
-Tag parsing is done by [tagkit](https://github.com/lascyb/tagkit), now upgraded to v1.1.0. Argument order, literal kinds (string / enum / number / boolean / null / list), list arguments and string escapes now come straight from tagkit; this library no longer re-scans the raw tag. **Output for valid tags is unchanged.** The differences are limited to invalid input that used to be accepted silently:
+Tag parsing is done by [tagkit](https://github.com/lascyb/tagkit), now upgraded to v1.1.1 (the behavior changes came in v1.1.0; v1.1.1 is a docs-only fix). Argument order, literal kinds (string / enum / number / boolean / null / list), list arguments and string escapes now come straight from tagkit; this library no longer re-scans the raw tag. **Output for valid tags is unchanged.** The differences are limited to invalid input that used to be accepted silently:
 
 | Tag | Before | Now |
 |------|------|------|

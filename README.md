@@ -180,7 +180,7 @@ query GetUser($id:ID!,$withUser:Boolean=true,$withEmail:Boolean!,$hideFriends:Bo
 
 ## 依赖升级：tagkit v1.1.0（行为变更）
 
-本库的 tag 解析依赖 [tagkit](https://github.com/lascyb/tagkit)，现已升级到 v1.1.0。参数顺序、字面量种类（字符串 / 枚举 / 数字 / 布尔 / null / 列表）、列表参数和字符串转义都直接取自 tagkit，不再在本库中重新扫描 tag 原文。**合法 tag 的输出与之前完全一致**，变化集中在以前被静默接受的非法写法上：
+本库的 tag 解析依赖 [tagkit](https://github.com/lascyb/tagkit)，现已升级到 v1.1.1（行为变更自 v1.1.0 起，v1.1.1 仅为文档修正）。参数顺序、字面量种类（字符串 / 枚举 / 数字 / 布尔 / null / 列表）、列表参数和字符串转义都直接取自 tagkit，不再在本库中重新扫描 tag 原文。**合法 tag 的输出与之前完全一致**，变化集中在以前被静默接受的非法写法上：
 
 | 写法 | 以前 | 现在 |
 |------|------|------|
