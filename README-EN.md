@@ -75,7 +75,7 @@ query GetData($list_query:String!,$id:Int!) {
 }
 ```
 
-For more examples (unions, fragment reuse, anonymous embedding, mutation, etc.) see the [test](./test) directory.
+For more examples (unions, fragment reuse, anonymous embedding, mutation, subscription, etc.) see the [test](./test) directory.
 
 ### Tests and examples (see [test](./test))
 
@@ -85,6 +85,7 @@ For more examples (unions, fragment reuse, anonymous embedding, mutation, etc.) 
 | `union`, `type=...` and other tag flags | [test/test_flag](./test/test_flag) |
 | Common misuses and expected errors | [test/test_error/common_misuse_test.go](./test/test_error/common_misuse_test.go) |
 | Query list / pagination / variable defaults | [test/test_query/discountNodes_test.go](./test/test_query/discountNodes_test.go) |
+| Subscription | [test/test_graphql/subscription_test.go](./test/test_graphql/subscription_test.go) |
 | Mutation | [test/test_mutation/productVariantsBulkUpdate_test.go](./test/test_mutation/productVariantsBulkUpdate_test.go) |
 
 Run tests: `go test ./test/...`, or open the corresponding `_test.go` files for full struct definitions and generated output.
@@ -114,6 +115,7 @@ Run tests: `go test ./test/...`, or open the corresponding `_test.go` files for 
 > **Deterministic output**: field arguments are emitted in the order they are written in the tag, variable definitions in order of first appearance, and fragments in order of first use; generating the same struct repeatedly always yields identical output, which makes snapshot testing and caching easy.
 - `Graphql.Query(name string)`: Assembles a complete GraphQL query string, including operation declaration, variable definitions, query body, and Fragments.
 - `Graphql.Mutation(name string)`: Assembles a complete GraphQL mutation string, including operation declaration, variable definitions, query body, and Fragments.
+- `Graphql.Subscription(name string)`: Assembles a complete GraphQL subscription string, including operation declaration, variable definitions, query body, and Fragments.
 
 ## Formatting
 Default indentation is two spaces, can be overridden with `graphql.SetIndent("    ")`.
@@ -132,4 +134,4 @@ Default indentation is two spaces, can be overridden with `graphql.SetIndent("  
 - [x] **Mutations** - Support for generating mutation operations, via `Mutation(name)` method
 - [x] **Default variables** - Support for variable default values (e.g., `$episode: Episode = JEDI`)
 - [ ] **Directives** - Directive support (e.g., `@include`, `@skip`, etc.)
-- [ ] **Subscriptions** - Support for generating subscription operations
+- [x] **Subscriptions** - Support for generating subscription operations, via `Subscription(name)` method

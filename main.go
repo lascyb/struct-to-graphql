@@ -92,6 +92,13 @@ func (g *Graphql) Mutation(name string) (string, error) {
 	return g.build("mutation", name)
 }
 
+// Subscription 组装完整的 GraphQL 订阅字符串
+// name: 订阅名称，如 "OnCommentAdded"、"OrderStatusChanged" 等
+// 返回: 完整的 GraphQL 订阅字符串，包含操作声明、变量定义、查询体和 Fragments
+func (g *Graphql) Subscription(name string) (string, error) {
+	return g.build("subscription", name)
+}
+
 // formatVariableDefault 将变量默认值格式化为 GraphQL 变量定义中的写法（如 "value"、123、[1,2,3]）
 func formatVariableDefault(v interface{}) string {
 	if v == nil {

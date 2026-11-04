@@ -56,7 +56,7 @@ query GetData($list_query:String!,$id:Int!) {
 }
 ```
 
-更多示例（联合类型、Fragment 复用、匿名嵌入、Mutation 等）见 [test](./test) 目录。
+更多示例（联合类型、Fragment 复用、匿名嵌入、Mutation、Subscription 等）见 [test](./test) 目录。
 
 ### 测试与示例（参考 [test](./test)）
 
@@ -66,6 +66,7 @@ query GetData($list_query:String!,$id:Int!) {
 | `union`、`type=xxx` 等 tag flag | [test/test_flag](./test/test_flag) |
 | 常见错误用法 | [test/test_error/common_misuse_test.go](./test/test_error/common_misuse_test.go) |
 | Query 列表/分页/变量默认值 | [test/test_query/discountNodes_test.go](./test/test_query/discountNodes_test.go) |
+| Subscription | [test/test_graphql/subscription_test.go](./test/test_graphql/subscription_test.go) |
 | Mutation | [test/test_mutation/productVariantsBulkUpdate_test.go](./test/test_mutation/productVariantsBulkUpdate_test.go) |
 
 运行测试：`go test ./test/...`，或在对应 `_test.go` 中查看完整结构体定义与生成结果。
@@ -95,6 +96,7 @@ query GetData($list_query:String!,$id:Int!) {
 > **输出稳定**：字段参数按 tag 中的书写顺序输出，变量定义按首次出现的顺序输出，Fragment 按首次使用的顺序输出；同一结构体多次生成的结果完全一致，便于快照测试与缓存。
 - `Graphql.Query(name string)`：组装完整的 GraphQL 查询字符串，包含操作声明、变量定义、查询体和 Fragments。
 - `Graphql.Mutation(name string)`：组装完整的 GraphQL 变更字符串，包含操作声明、变量定义、查询体和 Fragments。
+- `Graphql.Subscription(name string)`：组装完整的 GraphQL 订阅字符串，包含操作声明、变量定义、查询体和 Fragments。
 
 ## 格式化
 默认缩进为两个空格，可通过 `graphql.SetIndent("    ")` 覆盖。
@@ -113,4 +115,4 @@ query GetData($list_query:String!,$id:Int!) {
 - [x] **Mutations（变更）** - 支持生成 mutation 操作，通过 `Mutation(name)` 方法
 - [x] **Default variables（默认变量值）** - 支持变量默认值（如 `$episode: Episode = JEDI`）
 - [ ] **Directives（指令）** - 指令功能支持（如 `@include`、`@skip` 等）
-- [ ] **Subscriptions（订阅）** - 支持生成 subscription 操作
+- [x] **Subscriptions（订阅）** - 支持生成 subscription 操作，通过 `Subscription(name)` 方法
