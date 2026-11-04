@@ -35,27 +35,27 @@ type DeterministicQuery struct {
 }
 
 // Fragment 名称由 "包名+类型名" 组成，因此带有 Test_graphql 前缀
-const deterministicExpected = `fragment Test_graphqlDetAuthor on DetAuthor{
+const deterministicExpected = `fragment DetAuthor on DetAuthor{
   id
-  avatar{ ...Test_graphqlDetImage }
+  avatar{ ...DetImage }
 }
-fragment Test_graphqlDetImage on DetImage{
+fragment DetImage on DetImage{
   url
 }
-fragment Test_graphqlDetComment on DetComment{
+fragment DetComment on DetComment{
   body
-  author{ ...Test_graphqlDetAuthor }
+  author{ ...DetAuthor }
 }
 query Deterministic($first:Int!,$posts_after:String,$query:String,$commentsLast:Int=5,$pinnedId:ID!,$size:Int=100) {
   posts(first:$first,after:$posts_after,query:$query,reverse:true){
     nodes{
       title
-      author{ ...Test_graphqlDetAuthor }
-      comments(last:$commentsLast,sortKey:"CREATED_AT"){ ...Test_graphqlDetComment }
+      author{ ...DetAuthor }
+      comments(last:$commentsLast,sortKey:CREATED_AT){ ...DetComment }
     }
   }
-  pinned(id:$pinnedId){ ...Test_graphqlDetComment }
-  cover(size:$size){ ...Test_graphqlDetImage }
+  pinned(id:$pinnedId){ ...DetComment }
+  cover(size:$size){ ...DetImage }
 }`
 
 func TestDeterministic_ExactOutput(t *testing.T) {
@@ -80,7 +80,7 @@ func TestDeterministic_ExactOutput(t *testing.T) {
 			t.Errorf("Variables[%d] = %s, want %s", i, v.Name, wantVars[i])
 		}
 	}
-	wantFragments := []string{"Test_graphqlDetAuthor", "Test_graphqlDetImage", "Test_graphqlDetComment"}
+	wantFragments := []string{"DetAuthor", "DetImage", "DetComment"}
 	if len(exec.Fragments) != len(wantFragments) {
 		t.Fatalf("got %d fragments, want %d", len(exec.Fragments), len(wantFragments))
 	}

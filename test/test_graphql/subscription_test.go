@@ -16,7 +16,7 @@ type CommentAddedSubscription struct {
 	} `json:"commentAdded" graphql:"commentAdded(postId:$postId:ID!, since:$:DateTime)"`
 }
 
-const commentAddedExpected = `fragment Test_graphqlUserInfo on UserInfo{
+const commentAddedExpected = `fragment UserInfo on UserInfo{
   id
   name
   email
@@ -25,8 +25,8 @@ subscription OnCommentAdded($postId:ID!,$comment_added_since:DateTime) {
   commentAdded(postId:$postId,since:$comment_added_since){
     id
     body
-    author{ ...Test_graphqlUserInfo }
-    editor{ ...Test_graphqlUserInfo }
+    author{ ...UserInfo }
+    editor{ ...UserInfo }
   }
 }`
 

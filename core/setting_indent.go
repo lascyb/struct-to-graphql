@@ -1,20 +1,30 @@
 package core
 
-import "strings"
+import (
+	"strings"
+	"sync/atomic"
+)
 
-var indentMap = map[uint]string{
-	1: "  ",
+// DefaultIndent 默认的单级缩进
+const DefaultIndent = "  "
+
+var indent atomic.Pointer[string]
+
+func init() {
+	SetIndent(DefaultIndent)
 }
 
+// SetIndent 设置全局单级缩进，并发安全；已经开始的 Marshal 调用不受影响
 func SetIndent(val string) {
-	indentMap = map[uint]string{
-		1: val,
-	}
+	indent.Store(&val)
 }
-func indentWithLevel(level uint) string {
-	if v, ok := indentMap[level]; ok {
-		return v
-	}
-	indentMap[level] = strings.Repeat(indentMap[1], int(level))
-	return indentMap[level]
+
+// Indent 返回当前的全局单级缩进
+func Indent() string {
+	return *indent.Load()
+}
+
+// indentWithLevel 返回 level 级缩进
+func (g *Builder) indentWithLevel(level uint) string {
+	return strings.Repeat(g.indent, int(level))
 }

@@ -44,7 +44,7 @@ func TestDirective_Literal(t *testing.T) {
 	assertQuery(t, query, `query DirectiveLiteral {
   id @include(if:true)
   name @skip(if:false)
-  avatar @cached(ttl:60,scope:"PUBLIC")
+  avatar @cached(ttl:60,scope:PUBLIC)
   summary @truncate(suffix:"...",length:120)
 }`)
 }
@@ -85,7 +85,7 @@ func TestDirective_CombinedWithAliasArgsAndNested(t *testing.T) {
 	assertQuery(t, query, `query DirectiveCombined($id:ID!,$withUser:Boolean!,$friendsFirst:Int=10,$withFriends:Boolean!,$isGuest:Boolean!) {
   me:user(id:$id) @include(if:$withUser){
     id
-    topFriends:friends(first:$friendsFirst,orderBy:"NAME") @include(if:$withFriends) @skip(if:$isGuest) @live{
+    topFriends:friends(first:$friendsFirst,orderBy:NAME) @include(if:$withFriends) @skip(if:$isGuest) @live{
       name
     }
   }
@@ -105,13 +105,13 @@ type DirectiveFragmentQuery struct {
 
 func TestDirective_InsideFragment(t *testing.T) {
 	exec, query := buildQuery(t, DirectiveFragmentQuery{}, "DirectiveFragment")
-	assertQuery(t, query, `fragment Test_graphqlDirectiveProfile on DirectiveProfile{
+	assertQuery(t, query, `fragment DirectiveProfile on DirectiveProfile{
   id
   email @include(if:$withEmail)
 }
 query DirectiveFragment($hideAuthor:Boolean!,$withEmail:Boolean!) {
-  author @skip(if:$hideAuthor){ ...Test_graphqlDirectiveProfile }
-  reviewer{ ...Test_graphqlDirectiveProfile }
+  author @skip(if:$hideAuthor){ ...DirectiveProfile }
+  reviewer{ ...DirectiveProfile }
 }`)
 	if len(exec.Fragments) != 1 {
 		t.Fatalf("expected 1 fragment, got %d", len(exec.Fragments))

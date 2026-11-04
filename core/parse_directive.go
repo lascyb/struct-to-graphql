@@ -57,7 +57,7 @@ func parseDirective(raw string) (*Directive, error) {
 	if src == "" {
 		return nil, fmt.Errorf("directive 不能为空")
 	}
-	tv, err := tagkit.ParseTagValue(src)
+	tv, err := parseTagValue(src)
 	if err != nil {
 		return nil, fmt.Errorf("directive [%s] 解析失败: %w", raw, err)
 	}
@@ -67,14 +67,14 @@ func parseDirective(raw string) (*Directive, error) {
 	if !directiveNameRe.MatchString(tv.Name) || !strings.HasPrefix(src, tv.Name) {
 		return nil, fmt.Errorf("directive [%s] 缺少合法的指令名", raw)
 	}
-	args, err := convertArgs(tv.Args)
+	args, keys, err := newArgs(src, tv.Args)
 	if err != nil {
 		return nil, fmt.Errorf("directive [%s]: %w", raw, err)
 	}
 	d := &Directive{
 		Name:    tv.Name,
 		Args:    args,
-		ArgKeys: orderedArgKeys(src, args),
+		ArgKeys: keys,
 	}
 	if d.Name == "include" || d.Name == "skip" {
 		if err := validateConditionalDirective(d, raw); err != nil {

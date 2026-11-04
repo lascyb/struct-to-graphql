@@ -11,8 +11,10 @@ type Builder struct {
 	FragmentMap   map[reflect.Type]*Fragment // Fragment 映射，用于去重
 	VariableMap   map[string]*Variable       // 变量映射，用于去重
 	currentPaths  []string
-	fragmentOrder []reflect.Type // Fragment 首次使用的顺序，保证输出稳定
-	variableOrder []string       // 变量首次出现的顺序，保证输出稳定
+	fragmentOrder []reflect.Type          // Fragment 首次使用的顺序，保证输出稳定
+	fragmentNames map[string]reflect.Type // 已分配的 Fragment 名称，用于处理重名
+	variableOrder []string                // 变量首次出现的顺序，保证输出稳定
+	indent        string                  // 构建开始时的缩进快照，避免并发 SetIndent 导致输出不一致
 }
 
 // Fragment GraphQL Fragment
@@ -28,14 +30,17 @@ type Variable struct {
 	Paths        []string    // 变量路径（如 "nodes.edges.node.first"）
 	Type         string      // 变量类型（如 Int、Int!、String、String!）
 	HasDefault   bool        // 是否有默认值
-	DefaultValue interface{} // 默认值，用于变量定义中的 " = value"
+	DefaultValue interface{} // 默认值（tagkit 解析出的 Go 值）
+	Default      string      // 默认值的 GraphQL 写法（如 "abc"、CREATED_AT、[1,2]），用于变量定义中的 "=value"
 }
 
 func NewBuilder() *Builder {
 	return &Builder{
-		FragmentMap:  make(map[reflect.Type]*Fragment),
-		VariableMap:  make(map[string]*Variable),
-		currentPaths: []string{},
+		FragmentMap:   make(map[reflect.Type]*Fragment),
+		VariableMap:   make(map[string]*Variable),
+		currentPaths:  []string{},
+		fragmentNames: make(map[string]reflect.Type),
+		indent:        Indent(),
 	}
 }
 
@@ -62,10 +67,10 @@ func (g *Builder) Fragments() []*Fragment {
 }
 
 func (g *Builder) Build(typeParser *TypeParser) (string, error) {
-	if typeParser != nil {
-		return g.buildSelectionSet(typeParser, false, typeParser.Union, 0)
+	if typeParser == nil {
+		return "", fmt.Errorf("graphql: nothing to build, the struct has no queryable fields")
 	}
-	return "", fmt.Errorf("struct to parse cannot be nil")
+	return g.buildSelectionSet(typeParser, false, typeParser.Union, 0)
 }
 
 // buildSelectionSet 递归生成 GraphQL 类型定义字符串
@@ -83,14 +88,13 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 	if typeParser.Reused > 1 && typeParser.source.Name() != "" {
 		if fragment, ok := g.FragmentMap[typeParser.source]; ok {
 			if inlineType && !isUnionSubType {
-				return fmt.Sprintf("\n%s...%s", indentWithLevel(level+1), fragment.Name), nil
+				return fmt.Sprintf("\n%s...%s", g.indentWithLevel(level+1), fragment.Name), nil
 			}
 			return fmt.Sprintf("{ ...%s }", fragment.Name), nil
 		}
-		if !inlineType {
-			level = 0
-		}
 		if !inlineType || isUnionSubType {
+			// 该类型将生成为顶层 Fragment，缩进从 0 开始
+			level = 0
 			// 在开始构建时登记顺序，使外层 Fragment 排在其内部引用的 Fragment 之前（按首次使用顺序）
 			g.fragmentOrder = append(g.fragmentOrder, typeParser.source)
 		}
@@ -113,16 +117,13 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 		// 处理联合类型：使用 GraphQL 的 inline fragment 语法 "... on TypeName"
 		if typeParser.Union {
 			buf.WriteString("\n")
-			buf.WriteString(indentWithLevel(level + 1))
+			buf.WriteString(g.indentWithLevel(level + 1))
 			// __typename 字段直接输出，用于类型判断
 			if field.FieldName == "__typename" {
 				buf.WriteString(field.FieldName)
-			} else if field.TypeParser != nil {
-				// 联合类型的其他字段使用 "... on TypeName" 语法
+			} else {
+				// ParseType 已保证 union 分支均为匿名嵌入的命名结构体，TypeName 与 TypeParser 必然有效
 				buf.WriteString("... on ")
-				if field.TypeName == "" {
-					return "", fmt.Errorf("anonymous struct types are not supported for field [%s] in union types", field.FieldName)
-				}
 				buf.WriteString(field.TypeName)
 				// inline fragment 上的指令：... on Type @include(if:$x) { ... }
 				directives, err := g.buildDirectives(field)
@@ -137,8 +138,6 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 					return "", fmt.Errorf("failed to build type for field [%s]: %w", field.FieldName, err)
 				}
 				buf.WriteString(set)
-			} else {
-				return "", fmt.Errorf("field [%s] in union type [%s] should be a struct type", field.FieldName, typeParser.source.String())
 			}
 			continue
 		}
@@ -155,7 +154,7 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 		} else {
 			// 处理普通字段：添加字段名和适当缩进
 			buf.WriteString("\n")
-			buf.WriteString(indentWithLevel(level + 1))
+			buf.WriteString(g.indentWithLevel(level + 1))
 			buf.WriteString(field.FieldName)
 			// 构建字段参数
 			args, err := g.buildFieldArgs(field)
@@ -180,32 +179,18 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 	// 闭合花括号，与开头的花括号对应
 	if !inlineType || isUnionSubType {
 		buf.WriteString("\n")
-		buf.WriteString(indentWithLevel(level))
+		buf.WriteString(g.indentWithLevel(level))
 		buf.WriteString("}")
 
 		// 处理重用类型：当类型被多次引用且不是顶级类型时，应封装为 Fragment（匿名结构体无法生成 Fragment，跳过）
 		if typeParser.Reused > 1 && typeParser.source.Name() != "" {
-			// 生成 Fragment 名称时，使用单独的 result 切片来避免修改原始 split 导致的索引混乱
-			split := strings.Split(typeParser.source.String(), ".")
-			var result []string
-			for _, s := range split {
-				if s == "" {
-					continue
-				}
-				// 首字母大写
-				runes := []rune(s)
-				if len(runes) > 0 {
-					runes[0] = unicode.ToUpper(runes[0])
-				}
-				result = append(result, string(runes))
-			}
-			fragmentName := strings.Join(result, "")
-			fragmentType := typeParser.source.Name()
-			fragment := fmt.Sprintf("fragment %s on %s%s", fragmentName, fragmentType, buf.String())
+			fragmentName := g.fragmentName(typeParser.source)
+			// 类型条件使用 Go 类型名；泛型类型去掉类型参数部分（如 Page[Item] → Page）
+			fragmentType, _, _ := strings.Cut(typeParser.source.Name(), "[")
 			g.FragmentMap[typeParser.source] = &Fragment{
-				Name: strings.ReplaceAll(fragmentName, ".", "_"),
+				Name: fragmentName,
 				Type: fragmentType,
-				Body: fragment,
+				Body: fmt.Sprintf("fragment %s on %s%s", fragmentName, fragmentType, buf.String()),
 			}
 			return fmt.Sprintf("{ ...%s }", fragmentName), nil
 		}
@@ -213,7 +198,7 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 	return buf.String(), nil
 }
 
-// buildFieldArgs 构建字段参数字符串，返回形如 "(a: 1, b: $x)" 的片段
+// buildFieldArgs 构建字段参数字符串，返回形如 "(a:1,b:$x)" 的片段
 func (g *Builder) buildFieldArgs(field *FieldParser) (string, error) {
 	if field == nil || field.TagValue == nil || len(field.TagValue.Args) == 0 {
 		return "", nil
@@ -229,9 +214,6 @@ func (g *Builder) buildArgs(args map[string]*Arg, keys []string, varPrefix strin
 		value, err := g.buildArgumentValue(varPrefix+key, args[key])
 		if err != nil {
 			return "", err
-		}
-		if value == "" {
-			continue
 		}
 		parts = append(parts, fmt.Sprintf("%s:%s", key, value))
 	}
@@ -277,10 +259,6 @@ func CamelToSnake(s string) string {
 
 // buildArgumentValue 根据占位符与自定义名生成参数值字符串
 func (g *Builder) buildArgumentValue(key string, arg *Arg) (string, error) {
-	if arg == nil {
-		return "", nil
-	}
-
 	if arg.ArgValue.Type == "variable" {
 		varName := arg.VarName
 		if varName == "" {
@@ -299,27 +277,10 @@ func (g *Builder) buildArgumentValue(key string, arg *Arg) (string, error) {
 				Type:         arg.GraphQLType,
 				HasDefault:   arg.HasDefault,
 				DefaultValue: arg.DefaultVal,
+				Default:      arg.DefaultLiteral,
 			}
 		}
 		return g.VariableMap[varName].Name, nil
 	}
-	return formatLiteralArgValue(arg.Value), nil
-}
-
-// formatLiteralArgValue 将字面量参数格式化为 GraphQL 查询中的写法（字符串加引号等）
-func formatLiteralArgValue(v interface{}) string {
-	if v == nil {
-		return ""
-	}
-	switch val := v.(type) {
-	case string:
-		return `"` + strings.ReplaceAll(val, `"`, `\"`) + `"`
-	case bool:
-		if val {
-			return "true"
-		}
-		return "false"
-	default:
-		return fmt.Sprint(v)
-	}
+	return arg.Literal, nil
 }

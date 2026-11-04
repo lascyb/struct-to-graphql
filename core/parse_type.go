@@ -1,7 +1,6 @@
 package core
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 )
@@ -13,51 +12,53 @@ type TypeParser struct {
 	Reused uint
 }
 
+// ParseType 解析结构体类型（可为多层指针 / 切片 / 数组包装）。
+// 没有可查询字段（无导出字段或全部被跳过）的结构体返回 nil, nil，由调用方视为标量。
 func (p *Parser) ParseType(typ reflect.Type) (*TypeParser, error) {
+	if typ == nil {
+		return nil, fmt.Errorf("graphql: type cannot be nil")
+	}
+	for typ.Kind() == reflect.Ptr || typ.Kind() == reflect.Slice || typ.Kind() == reflect.Array {
+		typ = typ.Elem()
+	}
+	if typ.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("graphql: must be a struct type to convert, got %s", typ)
+	}
 	// 检查循环引用
 	if p.visiting[typ] {
-		typeName := typ.Name()
-		if typeName == "" {
-			typeName = typ.String()
+		return nil, fmt.Errorf("graphql: circular reference detected for type %s", typ)
+	}
+	if v, ok := p.types[typ]; ok {
+		if v != nil {
+			v.Reused++
 		}
-		return nil, fmt.Errorf("graphql: circular reference detected for type %s", typeName)
+		return v, nil
 	}
 
 	// 标记为正在访问
 	p.visiting[typ] = true
-	defer func() {
-		delete(p.visiting, typ)
-	}()
+	defer delete(p.visiting, typ)
 
-	if typ.Kind() == reflect.Ptr || typ.Kind() == reflect.Slice {
-		typ = typ.Elem()
-	}
-	if typ.Kind() != reflect.Struct {
-		return nil, errors.New("must be a struct type to convert")
-	}
-	if v, ok := p.types[typ]; ok && v != nil {
-		v.Reused++
-		return v, nil
-	}
-	fields := make([]*FieldParser, 0)
+	fields := make([]*FieldParser, 0, typ.NumField())
 	isUnionType := false
-	exportedCount := 0
 	for i := range typ.NumField() {
 		field := typ.Field(i)
 		if !field.IsExported() {
 			continue
 		}
-		exportedCount++
 		fieldParser, err := p.ParseField(field)
 		if err != nil {
 			return nil, err
+		}
+		if fieldParser == nil {
+			continue
 		}
 		if fieldParser.FieldName == "__typename" && fieldParser.TagValue != nil && hasFlag(fieldParser.TagValue.Flags, "union") {
 			isUnionType = true
 		}
 		fields = append(fields, fieldParser)
 	}
-	if exportedCount == 0 {
+	if len(fields) == 0 {
 		p.types[typ] = nil
 		return nil, nil
 	}

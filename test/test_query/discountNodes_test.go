@@ -47,7 +47,7 @@ type DiscountNodesQuery struct {
 }
 
 const discountNodesExpected = `query DiscountNodes($first:Int=50,$after:String,$query:String,$codesFirst:Int=10) {
-  discountNodes(first:$first,after:$after,query:$query,sortKey:"CREATED_AT",reverse:true){
+  discountNodes(first:$first,after:$after,query:$query,sortKey:CREATED_AT,reverse:true){
     nodes{
       id
       discount{
