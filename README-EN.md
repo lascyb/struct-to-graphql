@@ -126,9 +126,9 @@ Literal values in field arguments, directive arguments and variable defaults are
 |------|------|------|
 | `'abc'` or `\"abc\"` (quoted) | `"abc"` | GraphQL string; leading/trailing whitespace is trimmed, an all-whitespace value is an error |
 | `CREATED_AT` (bare identifier) | `CREATED_AT` | emitted as is, i.e. a GraphQL enum value |
-| `10`, `-5`, `1.5` | as is | numbers (negative numbers supported) |
+| `10`, `-5`, `1.5`, `1e3` | as is | numbers (negative numbers and exponents, GraphQL rules) |
 | `true` / `false` / `null` | as is | booleans and null |
-| `[1,2]`, `[A,'b']` | `[1,2]`, `[A,"b"]` | lists; elements follow the same rules |
+| `[1,2]`, `[A,'b']` | `[1,2]`, `[A,"b"]` | lists; elements follow the same rules and must share depth / kind |
 
 - Strings are escaped into valid GraphQL strings: `"`, `\`, newlines, tabs and other control characters are escaped. Inside a tag string, use `\'`, `\"` and `\\` for quotes and backslashes (inside a Go struct tag they need escaping once more, e.g. ``graphql:"search(path:'C:\\\\dir')"`` renders `path:"C:\\dir"`).
 - Variable defaults: for variables whose type is `String` or `ID` (including list / non-null forms) a bare identifier default is rendered as a string (`$q:String=hello` → `$q:String="hello"`); for any other type (e.g. an enum) it is emitted as is (`$sort:SortKey=CREATED_AT` → `$sort:SortKey=CREATED_AT`).
@@ -196,6 +196,23 @@ query GetUser($id:ID!,$withUser:Boolean=true,$withEmail:Boolean!,$hideFriends:Bo
   }
 }
 ```
+
+## Dependency upgrade: tagkit v1.1.0 (behavior changes)
+
+Tag parsing is done by [tagkit](https://github.com/lascyb/tagkit), now upgraded to v1.1.0. Argument order, literal kinds (string / enum / number / boolean / null / list), list arguments and string escapes now come straight from tagkit; this library no longer re-scans the raw tag. **Output for valid tags is unchanged.** The differences are limited to invalid input that used to be accepted silently:
+
+| Tag | Before | Now |
+|------|------|------|
+| `f(n:.5)`, `f(a:007)` | rendered `5`, `007` | error: invalid number |
+| `f(n:1.5e3)` | error | exponents supported, rendered as `1.5e3` |
+| `f(a:$a:Int b:2)` (missing comma) | treated as two arguments | error |
+| `f(ids:[1,[2,3]])`, `f(a:[A,1])` | rendered as is | error: list elements must share depth / kind |
+| `$a:Int=x`, `$a:String=1`, `$a:String!=null`, `$a:[Int]=1`, `$a:Int=99999999999` | rendered as is | error: default does not match the declared type |
+| `$a:[Int!!]` | rendered `[Int!]` | error: invalid type |
+| `f(é:1)` (non-ASCII identifier) | invalid UTF-8 output | error (quote non-ASCII text) |
+
+- **Error messages**: tag syntax errors are reported by tagkit as `field [<field>]: <message> at position <byte offset>`; use `errors.As(err, &se)` with `se *tagkit.SyntaxError` to get the position. The former `invalid tag "..."` and `参数 x 重复声明` errors became `unterminated string at position N` and `duplicate argument "x" at position N`.
+- **`Arg.Value`** (the embedded `tagkit.ArgValue` of `core.Arg`): for list literal arguments `Value` changed from the rendered string (e.g. `"[1,2]"`) to `[]interface{}`, and for `null` from the string `"null"` to `nil`; use `Arg.Literal` for the GraphQL form. `Arg.ArgValue` gains `Kind`, `Literal` and `Default`.
 
 ## Output Structure
 - `Graphql.Body`: Complete query body string.

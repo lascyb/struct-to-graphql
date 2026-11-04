@@ -107,9 +107,9 @@ go test -run='^$' -bench=. .                                  # 基准测试
 |------|------|------|
 | `'abc'` 或 `\"abc\"`（带引号） | `"abc"` | GraphQL 字符串；首尾空白会被去除，全空白报错 |
 | `CREATED_AT`（裸标识符） | `CREATED_AT` | 原样输出，即 GraphQL 枚举值 |
-| `10`、`-5`、`1.5` | 原样 | 数字（支持负数） |
+| `10`、`-5`、`1.5`、`1e3` | 原样 | 数字（支持负数与指数，遵循 GraphQL 规则） |
 | `true` / `false` / `null` | 原样 | 布尔值与 null |
-| `[1,2]`、`[A,'b']` | `[1,2]`、`[A,"b"]` | 列表，元素按相同规则输出 |
+| `[1,2]`、`[A,'b']` | `[1,2]`、`[A,"b"]` | 列表，元素按相同规则输出；元素的维度与类别需一致 |
 
 - 字符串会被转义为合法的 GraphQL 字符串：`"`、`\`、换行、制表符等控制字符都会转义；tag 字符串内用 `\'`、`\"`、`\\` 表示引号和反斜杠（写在 Go struct tag 中还需要再转义一次，如 ``graphql:"search(path:'C:\\\\dir')"`` 输出 `path:"C:\\dir"`）。
 - 变量默认值：`String` / `ID`（含列表、非空）类型的变量，裸标识符默认值按字符串输出（`$q:String=hello` → `$q:String="hello"`）；其他类型（如枚举）原样输出（`$sort:SortKey=CREATED_AT` → `$sort:SortKey=CREATED_AT`）。
@@ -177,6 +177,23 @@ query GetUser($id:ID!,$withUser:Boolean=true,$withEmail:Boolean!,$hideFriends:Bo
   }
 }
 ```
+
+## 依赖升级：tagkit v1.1.0（行为变更）
+
+本库的 tag 解析依赖 [tagkit](https://github.com/lascyb/tagkit)，现已升级到 v1.1.0。参数顺序、字面量种类（字符串 / 枚举 / 数字 / 布尔 / null / 列表）、列表参数和字符串转义都直接取自 tagkit，不再在本库中重新扫描 tag 原文。**合法 tag 的输出与之前完全一致**，变化集中在以前被静默接受的非法写法上：
+
+| 写法 | 以前 | 现在 |
+|------|------|------|
+| `f(n:.5)`、`f(a:007)` | 输出 `5`、`007` | 报错：非法数字 |
+| `f(n:1.5e3)` | 报错 | 支持指数，原样输出 `1.5e3` |
+| `f(a:$a:Int b:2)`（缺少逗号） | 当作 `a,b` 两个参数 | 报错 |
+| `f(ids:[1,[2,3]])`、`f(a:[A,1])` | 原样输出 | 报错：列表元素的维度 / 类别必须一致 |
+| `$a:Int=x`、`$a:String=1`、`$a:String!=null`、`$a:[Int]=1`、`$a:Int=99999999999` | 原样输出 | 报错：默认值与声明类型不符 |
+| `$a:[Int!!]` | 输出 `[Int!]` | 报错：类型写法错误 |
+| `f(é:1)`（非 ASCII 标识符） | 输出非法 UTF-8 | 报错（非 ASCII 文本请加引号） |
+
+- **错误信息**：tag 语法错误统一由 tagkit 报告，格式为 `field [<字段>]: <描述> at position <字节偏移>`，可通过 `errors.As(err, &se)`（`se *tagkit.SyntaxError`）取得出错位置。原来的 `invalid tag "..."`、`参数 x 重复声明` 分别变为 `unterminated string at position N`、`duplicate argument "x" at position N`。
+- **`Arg.Value`**（`core.Arg` 内嵌的 `tagkit.ArgValue`）：列表字面量参数的 `Value` 由渲染后的字符串（如 `"[1,2]"`）改为 `[]interface{}`，`null` 的 `Value` 由字符串 `"null"` 改为 `nil`；需要 GraphQL 写法时请使用 `Arg.Literal`。`Arg.ArgValue` 新增 `Kind`、`Literal`、`Default` 字段。
 
 ## 输出结构
 - `Graphql.Body`：完整查询体字符串。
