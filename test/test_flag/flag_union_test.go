@@ -1,72 +1,103 @@
 package test_flag
 
 import (
-	"strings"
 	"testing"
 
-	graphql "github.com/lascyb/struct-to-graphql"
+	"github.com/lascyb/struct-to-graphql/test/testutil"
 )
 
-// FlagUnionText union 分支：文本
+// ========== union flag 与 type flag ==========
+// 匿名结构体等错误分支写法统一在 test/test_error/common_misuse_test.go 中测试。
+
 type FlagUnionText struct {
-	Text string `graphql:"text"`
+	Text string `json:"text" graphql:"text"`
 }
 
-// FlagUnionImage union 分支：图片
 type FlagUnionImage struct {
-	URL string `graphql:"url"`
+	URL string `json:"url" graphql:"url"`
 }
 
-// FlagUnionContent 使用 union flag
+// union flag：__typename + 匿名嵌入的命名结构体
 type FlagUnionContent struct {
-	Typename string `graphql:"__typename,union"`
+	Typename string `json:"__typename" graphql:"__typename,union"`
 	FlagUnionText
-	FlagUnionImage
+	*FlagUnionImage // 指针嵌入同样支持
 }
 
-// FlagUnionQuery union 查询入口
 type FlagUnionQuery struct {
-	Content FlagUnionContent `graphql:"content"`
+	Content FlagUnionContent `json:"content" graphql:"content"`
 }
 
-// FlagUnionAnonymousContent 匿名 union 分支（未指定 type）应报错
-type FlagUnionAnonymousContent struct {
-	Typename string `graphql:"__typename,union"`
-	Bad      struct {
-		Name string `graphql:"name"`
+// type flag：自定义 "... on" 输出的类型名
+type FlagTypeNamedUnion struct {
+	Typename       string `json:"__typename" graphql:"__typename,union"`
+	FlagUnionText  `graphql:",type=TextData"`
+	FlagUnionImage `graphql:",type= ImageData "` // 首尾空白会被去除
+}
+
+type FlagTypeQuery struct {
+	Content []FlagTypeNamedUnion `json:"content" graphql:"content(first:2)"`
+}
+
+func TestFlagUnion(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		v    any
+		want string
+	}{
+		{"UnionFlag", FlagUnionQuery{}, `query Flag {
+  content{
+    __typename
+    ... on FlagUnionText {
+      text
+    }
+    ... on FlagUnionImage {
+      url
+    }
+  }
+}`},
+		{"TypeFlag", FlagTypeQuery{}, `query Flag {
+  content(first:2){
+    __typename
+    ... on TextData {
+      text
+    }
+    ... on ImageData {
+      url
+    }
+  }
+}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			testutil.AssertEqual(t, testutil.Query(t, c.v, "Flag"), c.want)
+			testutil.AssertResponseKeys(t, c.v)
+		})
 	}
 }
 
-type FlagUnionAnonymousQuery struct {
-	Content FlagUnionAnonymousContent `graphql:"content"`
+// 兼容写法：以逗号开头的单个布尔标记作为字段名（",name"），以及只写 ",union" 的 __typename 字段
+type LegacyFlagContent struct {
+	Kind string `json:"__typename" graphql:",union"`
+	FlagUnionText
 }
 
-func TestFlagUnion_GenerateInlineFragments(t *testing.T) {
-	exec, err := graphql.Marshal(FlagUnionQuery{})
-	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
-	}
-	query, err := exec.Query("FlagUnion")
-	if err != nil {
-		t.Fatalf("Query failed: %v", err)
-	}
-	if !strings.Contains(query, "__typename") {
-		t.Fatalf("missing __typename: %s", query)
-	}
-	if !strings.Contains(query, "... on FlagUnionText") {
-		t.Fatalf("missing union branch FlagUnionText: %s", query)
-	}
-	if !strings.Contains(query, "... on FlagUnionImage") {
-		t.Fatalf("missing union branch FlagUnionImage: %s", query)
-	}
+type LegacyFlagQuery struct {
+	Title   string            `json:"title" graphql:",title"`
+	Content LegacyFlagContent `json:"content" graphql:"content"`
 }
 
-func TestFlagUnion_AnonymousMemberShouldFail(t *testing.T) {
-	_, err := graphql.Marshal(FlagUnionAnonymousQuery{})
-	if err == nil {
-		t.Fatal("expected error for anonymous union member, got nil")
-	}
-	if !strings.Contains(err.Error(), "embedded struct field") && !strings.Contains(err.Error(), "named struct type") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+func TestFlagUnion_LegacySyntax(t *testing.T) {
+	t.Parallel()
+	testutil.AssertEqual(t, testutil.Query(t, LegacyFlagQuery{}, "Legacy"), `query Legacy {
+  title
+  content{
+    __typename
+    ... on FlagUnionText {
+      text
+    }
+  }
+}`)
 }

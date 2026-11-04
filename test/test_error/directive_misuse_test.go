@@ -1,28 +1,13 @@
 package test_error
 
 import (
-	"strings"
 	"testing"
 
 	graphql "github.com/lascyb/struct-to-graphql"
+	"github.com/lascyb/struct-to-graphql/test/testutil"
 )
 
 // ========== Directives 常见错误用法 ==========
-
-func expectMarshalError(t *testing.T, v any, wants ...string) {
-	t.Helper()
-	_, err := graphql.Marshal(v)
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	for _, w := range wants {
-		if strings.Contains(err.Error(), w) {
-			t.Logf("expected error: %v", err)
-			return
-		}
-	}
-	t.Fatalf("unexpected error: %v (want one of %q)", err, wants)
-}
 
 // directive 作为布尔标记（缺少值）
 type DirectiveBooleanFlag struct {
@@ -47,6 +32,19 @@ type DirectiveEmptyValue struct {
 // 一个 directive 中写多个指令
 type DirectiveMultipleInOne struct {
 	ID string `graphql:"id,directive='include(if:true),skip(if:false)'"`
+}
+
+// 指令后带有额外的标记位
+type DirectiveExtraFlag struct {
+	ID string `graphql:"id,directive='include(if:true),skip'"`
+}
+
+// 指令参数重复 / 为空
+type DirectiveDuplicateArg struct {
+	ID string `graphql:"id,directive='cached(ttl:1,ttl:2)'"`
+}
+type DirectiveEmptyArg struct {
+	ID string `graphql:"id,directive='cached(scope:\"\")'"`
 }
 
 // 缺少指令名
@@ -91,16 +89,20 @@ type DirectiveVariableTypeConflict struct {
 }
 
 func TestDirectiveMisuse(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name  string
 		v     any
-		wants []string
+		wants []string // 错误信息必须包含的全部片段
 	}{
 		{"BooleanFlag", DirectiveBooleanFlag{}, []string{"字符串形式"}},
 		{"NumberValue", DirectiveNumberValue{}, []string{"字符串形式"}},
 		{"ArrayValue", DirectiveArrayValue{}, []string{"字符串形式"}},
 		{"EmptyValue", DirectiveEmptyValue{}, []string{"不能为空"}},
-		{"MultipleInOne", DirectiveMultipleInOne{}, []string{"field must be unique", "只能包含一个指令"}},
+		{"MultipleInOne", DirectiveMultipleInOne{}, []string{"field [ID]", "field must be unique"}},
+		{"ExtraFlag", DirectiveExtraFlag{}, []string{"field [ID]", "只能包含一个指令调用"}},
+		{"DuplicateArg", DirectiveDuplicateArg{}, []string{"directive [cached(ttl:1,ttl:2)]", "参数 ttl 重复声明"}},
+		{"EmptyArg", DirectiveEmptyArg{}, []string{"参数值不能定义为空"}},
 		{"MissingName", DirectiveMissingName{}, []string{"缺少合法的指令名"}},
 		{"IncludeWithoutIf", DirectiveIncludeWithoutIf{}, []string{"必须且只能包含参数 if"}},
 		{"SkipExtraArg", DirectiveSkipExtraArg{}, []string{"必须且只能包含参数 if"}},
@@ -111,7 +113,8 @@ func TestDirectiveMisuse(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			expectMarshalError(t, c.v, c.wants...)
+			t.Parallel()
+			testutil.AssertMarshalError(t, c.v, c.wants...)
 		})
 	}
 }
@@ -122,11 +125,11 @@ type DirectiveCustomMissingType struct {
 }
 
 func TestDirectiveMisuse_CustomVariableMissingType(t *testing.T) {
+	t.Parallel()
 	exec, err := graphql.Marshal(DirectiveCustomMissingType{})
 	if err != nil {
 		t.Fatalf("marshal should succeed, got: %v", err)
 	}
-	if _, err = exec.Query("MissingType"); err == nil || !strings.Contains(err.Error(), "缺少类型定义") {
-		t.Fatalf("expected missing variable type error, got: %v", err)
-	}
+	_, err = exec.Query("MissingType")
+	testutil.AssertError(t, err, "变量 $ttl 缺少类型定义")
 }

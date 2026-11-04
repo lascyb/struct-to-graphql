@@ -1,0 +1,27 @@
+fragment AuthorInfo on AuthorInfo{
+  id
+  name
+  email
+}
+query CombinedTest($first:Int=10) {
+  id
+  headline:title
+  content{
+    __typename
+    ... on MediaInfo {
+      url
+      width
+      height
+    }
+    ... on AuthorInfo { ...AuthorInfo }
+  }
+  author{ ...AuthorInfo }
+  editor{ ...AuthorInfo }
+  comments(first:$first){
+    id
+    author{ ...AuthorInfo }
+    body
+  }
+  views
+  likes
+}

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	graphql "github.com/lascyb/struct-to-graphql"
+	"github.com/lascyb/struct-to-graphql/test/testutil"
 )
 
 // ========== Query 示例：列表 / 分页 / 变量默认值 ==========
@@ -30,6 +31,7 @@ type DiscountAutomaticBasic struct {
 }
 
 // Discount 为 union：通过 __typename 区分具体类型
+// sortKey:CREATED_AT 为裸标识符，按枚举值原样输出
 type Discount struct {
 	Typename string `json:"__typename" graphql:"__typename,union"`
 	DiscountCodeBasic
@@ -75,16 +77,14 @@ const discountNodesExpected = `query DiscountNodes($first:Int=50,$after:String,$
 }`
 
 func TestDiscountNodesQuery(t *testing.T) {
-	exec, err := graphql.Marshal(DiscountNodesQuery{})
-	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
-	}
-	query, err := exec.Query("DiscountNodes")
-	if err != nil {
-		t.Fatalf("Query failed: %v", err)
-	}
-	t.Logf("Generated Query:\n%s", query)
-	if query != discountNodesExpected {
-		t.Fatalf("unexpected output.\n--- got ---\n%s\n--- want ---\n%s", query, discountNodesExpected)
-	}
+	t.Parallel()
+	exec, query := testutil.Build(t, DiscountNodesQuery{}, testutil.OpQuery, "DiscountNodes")
+	testutil.AssertEqual(t, query, discountNodesExpected)
+	testutil.AssertVariables(t, exec.Variables, []graphql.Variable{
+		{Name: "$first", Type: "Int", HasDefault: true, Default: "50", Paths: []string{"discountNodes"}},
+		{Name: "$after", Type: "String", Paths: []string{"discountNodes"}},
+		{Name: "$query", Type: "String", Paths: []string{"discountNodes"}},
+		{Name: "$codesFirst", Type: "Int", HasDefault: true, Default: "10", Paths: []string{"discountNodes/nodes/discount/DiscountCodeBasic/codes"}},
+	})
+	testutil.AssertResponseKeys(t, DiscountNodesQuery{})
 }

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	graphql "github.com/lascyb/struct-to-graphql"
+	"github.com/lascyb/struct-to-graphql/test/testutil"
 )
 
 // ========== Directives（指令） ==========
@@ -12,26 +13,12 @@ import (
 
 func buildQuery(t *testing.T, v any, name string) (*graphql.Graphql, string) {
 	t.Helper()
-	exec, err := graphql.Marshal(v)
-	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
-	}
-	query, err := exec.Query(name)
-	if err != nil {
-		t.Fatalf("Query failed: %v", err)
-	}
-	t.Logf("Generated Query:\n%s", query)
-	return exec, query
+	return testutil.Build(t, v, testutil.OpQuery, name)
 }
 
-func assertQuery(t *testing.T, got, want string) {
-	t.Helper()
-	if got != want {
-		t.Fatalf("unexpected output.\n--- got ---\n%s\n--- want ---\n%s", got, want)
-	}
-}
+var assertQuery = testutil.AssertEqual
 
-// 字面量参数：布尔、数字、标识符/字符串
+// 字面量参数：布尔、数字、枚举（裸标识符，原样输出）、字符串（带引号）
 type DirectiveLiteralQuery struct {
 	ID      string `json:"id" graphql:"id,directive='include(if:true)'"`
 	Name    string `json:"name" graphql:"name,directive='skip(if:false)'"`
@@ -40,6 +27,7 @@ type DirectiveLiteralQuery struct {
 }
 
 func TestDirective_Literal(t *testing.T) {
+	t.Parallel()
 	_, query := buildQuery(t, DirectiveLiteralQuery{}, "DirectiveLiteral")
 	assertQuery(t, query, `query DirectiveLiteral {
   id @include(if:true)
@@ -58,6 +46,7 @@ type DirectiveVariableQuery struct {
 }
 
 func TestDirective_Variables(t *testing.T) {
+	t.Parallel()
 	exec, query := buildQuery(t, DirectiveVariableQuery{}, "DirectiveVariable")
 	assertQuery(t, query, `query DirectiveVariable($withEmail:Boolean!,$phone_skip_if:Boolean!,$withBio:Boolean=true,$tags_cached_ttl:Int=30) {
   email @include(if:$withEmail)
@@ -65,9 +54,12 @@ func TestDirective_Variables(t *testing.T) {
   bio @include(if:$withBio)
   tags @cached(ttl:$tags_cached_ttl)
 }`)
-	if len(exec.Variables) != 4 {
-		t.Fatalf("expected 4 variables, got %d", len(exec.Variables))
-	}
+	testutil.AssertVariables(t, exec.Variables, []graphql.Variable{
+		{Name: "$withEmail", Type: "Boolean!", Paths: []string{"email"}},
+		{Name: "$phone_skip_if", Type: "Boolean!", Paths: []string{"phone"}},
+		{Name: "$withBio", Type: "Boolean", HasDefault: true, Default: "true", Paths: []string{"bio"}},
+		{Name: "$tags_cached_ttl", Type: "Int", HasDefault: true, Default: "30", Paths: []string{"tags"}},
+	})
 }
 
 // 同一字段多个指令 + 别名 + 字段参数 + 嵌套结构体 + 无参指令
@@ -76,11 +68,12 @@ type DirectiveCombinedQuery struct {
 		ID      string `json:"id" graphql:"id"`
 		Friends []struct {
 			Name string `json:"name" graphql:"name"`
-		} `json:"friends" graphql:"friends(first:$friendsFirst:Int=10, orderBy:NAME),alias=topFriends,directive='include(if:$withFriends:Boolean!)',directive='skip(if:$isGuest:Boolean!)',directive=live"`
-	} `json:"user" graphql:"user(id:$id:ID!),alias=me,directive='include(if:$withUser:Boolean!)'"`
+		} `json:"topFriends" graphql:"friends(first:$friendsFirst:Int=10, orderBy:NAME),alias=topFriends,directive='include(if:$withFriends:Boolean!)',directive='skip(if:$isGuest:Boolean!)',directive=live"`
+	} `json:"me" graphql:"user(id:$id:ID!),alias=me,directive='include(if:$withUser:Boolean!)'"`
 }
 
 func TestDirective_CombinedWithAliasArgsAndNested(t *testing.T) {
+	t.Parallel()
 	_, query := buildQuery(t, DirectiveCombinedQuery{}, "DirectiveCombined")
 	assertQuery(t, query, `query DirectiveCombined($id:ID!,$withUser:Boolean!,$friendsFirst:Int=10,$withFriends:Boolean!,$isGuest:Boolean!) {
   me:user(id:$id) @include(if:$withUser){
@@ -104,6 +97,7 @@ type DirectiveFragmentQuery struct {
 }
 
 func TestDirective_InsideFragment(t *testing.T) {
+	t.Parallel()
 	exec, query := buildQuery(t, DirectiveFragmentQuery{}, "DirectiveFragment")
 	assertQuery(t, query, `fragment DirectiveProfile on DirectiveProfile{
   id
@@ -113,9 +107,11 @@ query DirectiveFragment($hideAuthor:Boolean!,$withEmail:Boolean!) {
   author @skip(if:$hideAuthor){ ...DirectiveProfile }
   reviewer{ ...DirectiveProfile }
 }`)
-	if len(exec.Fragments) != 1 {
-		t.Fatalf("expected 1 fragment, got %d", len(exec.Fragments))
-	}
+	testutil.AssertFragmentNames(t, exec.Fragments, "DirectiveProfile")
+	testutil.AssertVariables(t, exec.Variables, []graphql.Variable{
+		{Name: "$hideAuthor", Type: "Boolean!", Paths: []string{"author"}},
+		{Name: "$withEmail", Type: "Boolean!", Paths: []string{"author/email"}},
+	})
 }
 
 // union 分支（inline fragment）上的指令
@@ -138,6 +134,7 @@ type DirectiveUnionQuery struct {
 }
 
 func TestDirective_OnUnionBranch(t *testing.T) {
+	t.Parallel()
 	_, query := buildQuery(t, DirectiveUnionQuery{}, "DirectiveUnion")
 	assertQuery(t, query, `query DirectiveUnion($withImages:Boolean!) {
   content{
@@ -163,6 +160,7 @@ type DirectiveSharedVarQuery struct {
 }
 
 func TestDirective_SharedVariable(t *testing.T) {
+	t.Parallel()
 	exec, query := buildQuery(t, DirectiveSharedVarQuery{}, "DirectiveShared")
 	assertQuery(t, query, `query DirectiveShared($preview:Boolean!) {
   posts(draft:$preview) @include(if:$preview){
@@ -172,37 +170,51 @@ func TestDirective_SharedVariable(t *testing.T) {
     id
   }
 }`)
-	if len(exec.Variables) != 1 || len(exec.Variables[0].Paths) != 3 {
-		t.Fatalf("expected 1 variable used at 3 paths, got %+v", exec.Variables)
-	}
+	testutil.AssertVariables(t, exec.Variables, []graphql.Variable{
+		{Name: "$preview", Type: "Boolean!", Paths: []string{"posts", "posts", "drafts"}},
+	})
 }
 
 // Mutation / Subscription 同样适用
-func TestDirective_Subscription(t *testing.T) {
-	type Sub struct {
-		OrderUpdated struct {
-			ID     string `json:"id" graphql:"id"`
-			Status string `json:"status" graphql:"status,directive='include(if:$withStatus:Boolean!)'"`
-		} `json:"orderUpdated" graphql:"orderUpdated(id:$id:ID!)"`
-	}
-	exec, err := graphql.Marshal(Sub{})
-	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
-	}
-	got, err := exec.Subscription("OnOrderUpdated")
-	if err != nil {
-		t.Fatalf("Subscription failed: %v", err)
-	}
-	assertQuery(t, got, `subscription OnOrderUpdated($id:ID!,$withStatus:Boolean!) {
+type DirectiveSubscription struct {
+	OrderUpdated struct {
+		ID     string `json:"id" graphql:"id"`
+		Status string `json:"status" graphql:"status,directive='include(if:$withStatus:Boolean!)'"`
+	} `json:"orderUpdated" graphql:"orderUpdated(id:$id:ID!)"`
+}
+
+type DirectiveMutation struct {
+	OrderClose struct {
+		Order struct {
+			ID   string `json:"id" graphql:"id"`
+			Note string `json:"note" graphql:"note,directive='skip(if:$hideNote)'"`
+		} `json:"order" graphql:"order"`
+	} `json:"orderClose" graphql:"orderClose(input:$input:OrderCloseInput!),directive='audit(reason:\"manual\",level:HIGH)'"`
+}
+
+func TestDirective_SubscriptionAndMutation(t *testing.T) {
+	t.Parallel()
+	runOutputCases(t, []outputCase{
+		{name: "Subscription", v: DirectiveSubscription{}, op: testutil.OpSubscription, opName: "OnOrderUpdated", want: `subscription OnOrderUpdated($id:ID!,$withStatus:Boolean!) {
   orderUpdated(id:$id){
     id
     status @include(if:$withStatus)
   }
-}`)
+}`},
+		{name: "Mutation", v: DirectiveMutation{}, op: testutil.OpMutation, opName: "CloseOrder", want: `mutation CloseOrder($input:OrderCloseInput!,$hideNote:Boolean!) {
+  orderClose(input:$input) @audit(reason:"manual",level:HIGH){
+    order{
+      id
+      note @skip(if:$hideNote)
+    }
+  }
+}`},
+	})
 }
 
 // 未使用指令时输出与之前完全一致（向后兼容）
 func TestDirective_BackwardCompatible(t *testing.T) {
+	t.Parallel()
 	_, query := buildQuery(t, AliasQuery{}, "NoDirective")
 	assertQuery(t, query, `query NoDirective {
   id
@@ -218,11 +230,12 @@ type DirectiveReadmeQuery struct {
 		Email   string `graphql:"email,directive='include(if:$withEmail:Boolean!)'"`
 		Friends []struct {
 			Name string `graphql:"name"`
-		} `graphql:"friends(first:10),alias=topFriends,directive='skip(if:$hideFriends)',directive='cached(ttl:60)'"`
+		} `json:"topFriends" graphql:"friends(first:10),alias=topFriends,directive='skip(if:$hideFriends)',directive='cached(ttl:60)'"`
 	} `graphql:"user(id:$id:ID!),directive='include(if:$withUser:Boolean=true)'"`
 }
 
 func TestDirective_ReadmeExample(t *testing.T) {
+	t.Parallel()
 	_, query := buildQuery(t, DirectiveReadmeQuery{}, "GetUser")
 	assertQuery(t, query, `query GetUser($id:ID!,$withUser:Boolean=true,$withEmail:Boolean!,$hideFriends:Boolean!) {
   user(id:$id) @include(if:$withUser){

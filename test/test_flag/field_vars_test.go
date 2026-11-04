@@ -1,45 +1,44 @@
 package test_flag
 
 import (
-	"fmt"
 	"testing"
 
 	graphql "github.com/lascyb/struct-to-graphql"
+	"github.com/lascyb/struct-to-graphql/test/testutil"
 )
 
 type Order struct {
-	ID string `graphql:"id"`
-}
-type Query struct {
-	Orders []Order `graphql:"orders(query:'financial_status:paid OR financial_status:partially_refunded',name:lascyb)"`
+	ID string `json:"id" graphql:"id"`
 }
 
-type QueryLiteralType struct {
-	Orders []Order `graphql:"orders(sort:$desc:String!)"`
+// 带引号的字面量中可以包含 ":"、空格等字符，整体作为 GraphQL 字符串输出；裸标识符按枚举值原样输出
+type QuotedLiteralQuery struct {
+	Orders []Order `json:"orders" graphql:"orders(query:'financial_status:paid OR financial_status:partially_refunded',sortKey:PROCESSED_AT)"`
 }
 
-func TestFieldVars(t *testing.T) {
-	marshal, err := graphql.Marshal(Query{})
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	query, qErr := marshal.Query("MyQuery")
-	if qErr != nil {
-		t.Fatalf("query build failed: %v", qErr)
-	}
-	fmt.Println(query)
+// $name:Type 中 ":" 之后的部分是变量类型，而不是字面量的一部分
+type VariableTypeQuery struct {
+	Orders []Order `json:"orders" graphql:"orders(sort:$desc:String!)"`
 }
 
-func TestFieldVars_LiteralWithColonShouldKeepRawValue(t *testing.T) {
-	marshal, err := graphql.Marshal(QueryLiteralType{})
-	if err != nil {
-		t.Fatalf("marshal failed: %v", err)
-	}
-	query, qErr := marshal.Query("MyQuery")
-	if qErr != nil {
-		t.Fatalf("query build failed: %v", qErr)
-	}
-	fmt.Println(query)
+func TestFieldVars_QuotedLiteralKeepsColon(t *testing.T) {
+	t.Parallel()
+	testutil.AssertEqual(t, testutil.Query(t, QuotedLiteralQuery{}, "MyQuery"), `query MyQuery {
+  orders(query:"financial_status:paid OR financial_status:partially_refunded",sortKey:PROCESSED_AT){
+    id
+  }
+}`)
+}
 
+func TestFieldVars_VariableTypeAfterColon(t *testing.T) {
+	t.Parallel()
+	exec, got := testutil.Build(t, VariableTypeQuery{}, testutil.OpQuery, "MyQuery")
+	testutil.AssertEqual(t, got, `query MyQuery($desc:String!) {
+  orders(sort:$desc){
+    id
+  }
+}`)
+	testutil.AssertVariables(t, exec.Variables, []graphql.Variable{
+		{Name: "$desc", Type: "String!", Paths: []string{"orders"}},
+	})
 }

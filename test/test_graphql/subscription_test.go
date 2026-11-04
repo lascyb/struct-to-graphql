@@ -3,7 +3,7 @@ package test_graphql
 import (
 	"testing"
 
-	graphql "github.com/lascyb/struct-to-graphql"
+	"github.com/lascyb/struct-to-graphql/test/testutil"
 )
 
 // 测试 Subscription
@@ -30,44 +30,14 @@ subscription OnCommentAdded($postId:ID!,$comment_added_since:DateTime) {
   }
 }`
 
-func TestSubscription(t *testing.T) {
-	exec, err := graphql.Marshal(CommentAddedSubscription{})
-	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
-	}
-	subscription, err := exec.Subscription("OnCommentAdded")
-	if err != nil {
-		t.Fatalf("Subscription failed: %v", err)
-	}
-	t.Logf("Generated Subscription:\n%s", subscription)
-	if subscription != commentAddedExpected {
-		t.Fatalf("unexpected output.\n--- got ---\n%s\n--- want ---\n%s", subscription, commentAddedExpected)
-	}
-}
-
-// 匿名操作：name 为空时只输出 subscription 关键字
-func TestSubscription_Anonymous(t *testing.T) {
+func TestSubscriptionOutput(t *testing.T) {
+	t.Parallel()
 	type Sub struct {
-		Ping string `graphql:"ping"`
+		Ping string `json:"ping" graphql:"ping"`
 	}
-	exec, err := graphql.Marshal(Sub{})
-	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
-	}
-	got, err := exec.Subscription("")
-	if err != nil {
-		t.Fatalf("Subscription failed: %v", err)
-	}
-	want := "subscription {\n  ping\n}"
-	if got != want {
-		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
-	}
-}
-
-// nil 接收者应返回错误而不是 panic
-func TestSubscription_NilGraphql(t *testing.T) {
-	var g *graphql.Graphql
-	if _, err := g.Subscription("X"); err == nil {
-		t.Fatal("expected error for nil Graphql, got nil")
-	}
+	runOutputCases(t, []outputCase{
+		{name: "Subscription", v: CommentAddedSubscription{}, op: testutil.OpSubscription, opName: "OnCommentAdded", want: commentAddedExpected},
+		// 匿名操作：name 为空时只输出 subscription 关键字
+		{name: "Anonymous", v: Sub{}, op: testutil.OpSubscription, want: "subscription {\n  ping\n}"},
+	})
 }

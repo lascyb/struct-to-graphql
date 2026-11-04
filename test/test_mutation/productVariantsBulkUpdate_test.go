@@ -3,7 +3,7 @@ package test_mutation
 import (
 	"testing"
 
-	graphql "github.com/lascyb/struct-to-graphql"
+	"github.com/lascyb/struct-to-graphql/test/testutil"
 )
 
 // ========== Mutation 示例 ==========
@@ -46,16 +46,8 @@ const productVariantsBulkUpdateExpected = `mutation ProductVariantsBulkUpdate($p
 }`
 
 func TestProductVariantsBulkUpdateMutation(t *testing.T) {
-	exec, err := graphql.Marshal(ProductVariantsBulkUpdateMutation{})
-	if err != nil {
-		t.Fatalf("Marshal failed: %v", err)
-	}
-	mutation, err := exec.Mutation("ProductVariantsBulkUpdate")
-	if err != nil {
-		t.Fatalf("Mutation failed: %v", err)
-	}
-	t.Logf("Generated Mutation:\n%s", mutation)
-	if mutation != productVariantsBulkUpdateExpected {
-		t.Fatalf("unexpected output.\n--- got ---\n%s\n--- want ---\n%s", mutation, productVariantsBulkUpdateExpected)
-	}
+	t.Parallel()
+	_, mutation := testutil.Build(t, ProductVariantsBulkUpdateMutation{}, testutil.OpMutation, "ProductVariantsBulkUpdate")
+	testutil.AssertEqual(t, mutation, productVariantsBulkUpdateExpected)
+	testutil.AssertResponseKeys(t, ProductVariantsBulkUpdateMutation{})
 }

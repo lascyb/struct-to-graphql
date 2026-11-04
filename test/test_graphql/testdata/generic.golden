@@ -1,0 +1,39 @@
+fragment Page_UserInfo on Page{
+  nodes{ ...UserInfo }
+  hasMore
+  pageSize
+}
+fragment UserInfo on UserInfo{
+  id
+  name
+  email
+}
+fragment Page_Tag on Page{
+  nodes{
+    name
+  }
+  hasMore
+  pageSize
+}
+fragment Pair_String_Int on Pair{
+  key
+  value
+}
+fragment Page_Pair_String_UserInfo on Page{
+  nodes{
+    key
+    value{ ...UserInfo }
+  }
+  hasMore
+  pageSize
+}
+query Generic {
+  users(first:10){ ...Page_UserInfo }
+  admins(first:5){ ...Page_UserInfo }
+  tags{ ...Page_Tag }
+  moreTags{ ...Page_Tag }
+  pairs{ ...Pair_String_Int }
+  pairs2{ ...Pair_String_Int }
+  nested{ ...Page_Pair_String_UserInfo }
+  nested2{ ...Page_Pair_String_UserInfo }
+}
