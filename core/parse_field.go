@@ -15,6 +15,7 @@ type FieldParser struct {
 	Inline     bool
 	FieldName  string
 	TagValue   *TagValue
+	Directives []*Directive // 字段指令，按书写顺序排列
 }
 
 // Arg 包装 tagkit.ArgValue，GraphQLType 为变量的 GraphQL 类型或字面量的自定义类型
@@ -78,6 +79,7 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 	}
 
 	var fieldTagValue *TagValue = nil
+	var directives []*Directive
 
 	if tagValue != nil {
 		args, err := convertArgs(tagValue.Args)
@@ -89,6 +91,10 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 			Args:     args,
 			ArgKeys:  orderedArgKeys(rawTag, args),
 		}
+		directives, err = parseDirectives(tagValue.Flags)
+		if err != nil {
+			return nil, fmt.Errorf("field [%s]: %w", field.Name, err)
+		}
 	}
 
 	return &FieldParser{
@@ -98,6 +104,7 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 		FieldName:  fieldName,
 		TagValue:   fieldTagValue,
 		Inline:     field.Anonymous,
+		Directives: directives,
 	}, nil
 }
 

@@ -124,6 +124,12 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 					return "", fmt.Errorf("anonymous struct types are not supported for field [%s] in union types", field.FieldName)
 				}
 				buf.WriteString(field.TypeName)
+				// inline fragment 上的指令：... on Type @include(if:$x) { ... }
+				directives, err := g.buildDirectives(field)
+				if err != nil {
+					return "", err
+				}
+				buf.WriteString(directives)
 				buf.WriteString(" ")
 				// 递归构建子类型，标记为联合子类型以保持花括号
 				set, err := g.buildSelectionSet(field.TypeParser, field.Inline, true, level+1)
@@ -138,6 +144,9 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 		}
 		// 处理匿名嵌入字段：直接展开字段内容，不添加字段名
 		if field.Inline {
+			if len(field.Directives) > 0 {
+				return "", fmt.Errorf("directives are not supported on embedded (flattened) field [%s]; put them on a named field or a union branch", field.FieldName)
+			}
 			set, err := g.buildSelectionSet(field.TypeParser, true, false, level)
 			if err != nil {
 				return "", fmt.Errorf("failed to build type for field [%s]: %w", field.FieldName, err)
@@ -154,6 +163,12 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 				return "", err
 			}
 			buf.WriteString(args)
+			// 构建字段指令（位于参数之后、子选择集之前）
+			directives, err := g.buildDirectives(field)
+			if err != nil {
+				return "", err
+			}
+			buf.WriteString(directives)
 			// 递归构建嵌套类型，层级递增
 			set, err := g.buildSelectionSet(field.TypeParser, false, false, level+1)
 			if err != nil {
@@ -203,11 +218,15 @@ func (g *Builder) buildFieldArgs(field *FieldParser) (string, error) {
 	if field == nil || field.TagValue == nil || len(field.TagValue.Args) == 0 {
 		return "", nil
 	}
+	return g.buildArgs(field.TagValue.Args, field.TagValue.ArgKeys, "")
+}
 
-	parts := make([]string, 0, len(field.TagValue.Args))
-	for _, key := range field.TagValue.ArgKeys {
-		arg := field.TagValue.Args[key]
-		value, err := g.buildArgumentValue(key, arg)
+// buildArgs 按 keys 顺序构建参数列表字符串，返回形如 "(a:1,b:$x)" 的片段
+// varPrefix: 匿名变量名的参数前缀（指令参数使用 "指令名_"，避免与字段参数重名）
+func (g *Builder) buildArgs(args map[string]*Arg, keys []string, varPrefix string) (string, error) {
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value, err := g.buildArgumentValue(varPrefix+key, args[key])
 		if err != nil {
 			return "", err
 		}
@@ -221,6 +240,24 @@ func (g *Builder) buildFieldArgs(field *FieldParser) (string, error) {
 		return "", nil
 	}
 	return fmt.Sprintf("(%s)", strings.Join(parts, ",")), nil
+}
+
+// buildDirectives 构建字段指令字符串，返回形如 " @include(if:$show) @skip(if:false)" 的片段
+func (g *Builder) buildDirectives(field *FieldParser) (string, error) {
+	if field == nil || len(field.Directives) == 0 {
+		return "", nil
+	}
+	buf := new(strings.Builder)
+	for _, d := range field.Directives {
+		args, err := g.buildArgs(d.Args, d.ArgKeys, d.Name+"_")
+		if err != nil {
+			return "", fmt.Errorf("directive @%s on field [%s]: %w", d.Name, field.FieldName, err)
+		}
+		buf.WriteString(" @")
+		buf.WriteString(d.Name)
+		buf.WriteString(args)
+	}
+	return buf.String(), nil
 }
 
 func CamelToSnake(s string) string {

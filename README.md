@@ -66,6 +66,7 @@ query GetData($list_query:String!,$id:Int!) {
 | `union`、`type=xxx` 等 tag flag | [test/test_flag](./test/test_flag) |
 | 常见错误用法 | [test/test_error/common_misuse_test.go](./test/test_error/common_misuse_test.go) |
 | Query 列表/分页/变量默认值 | [test/test_query/discountNodes_test.go](./test/test_query/discountNodes_test.go) |
+| Directives（指令） | [test/test_graphql/directive_test.go](./test/test_graphql/directive_test.go)、[test/test_error/directive_misuse_test.go](./test/test_error/directive_misuse_test.go) |
 | Subscription | [test/test_graphql/subscription_test.go](./test/test_graphql/subscription_test.go) |
 | Mutation | [test/test_mutation/productVariantsBulkUpdate_test.go](./test/test_mutation/productVariantsBulkUpdate_test.go) |
 
@@ -85,18 +86,56 @@ query GetData($list_query:String!,$id:Int!) {
     ```
 - `graphql:"field(arg1:1,arg2:$,arg3:$value3,...)"`：支持参数，值中 `$` 作为占位符自动生成变量名，可用 `query:$custom` 指定变量名。
 - `graphql:"field(arg:$:Type1,arg2:$varName:Type2)"`：支持为变量指定类型，格式为 `$:Type`（匿名占位符）或 `$varName:Type`（自定义变量名），如 `query:$:String!`、`id:$id:Int!`。
+- `graphql:"field,directive='include(if:$show:Boolean!)'"`：为字段添加指令，详见下方 [指令（Directives）](#指令directives)。
 
 > **字段平铺**：将嵌套结构体的字段平铺到父级，使用 **Go 匿名嵌入** 即可。当前实现中，**仅匿名字段**会作为内联展开；不再依赖单独的 `inline` 标记。匿名嵌入在查询生成与 `encoding/json` 反序列化中均为扁平结构，与常见用法一致。
+
+### 指令（Directives）
+
+在 tag 中追加 `directive='...'` 标记位为字段声明指令，引号内使用与字段调用**完全相同**的语法 `name(arg:value,...)`（前导 `@` 可写可不写）：
+
+- **可重复**：同一字段可写多个 `directive='...'`，按书写顺序输出；每个 `directive` 只能包含一个指令。
+- **参数值**：支持字面量（`true`、`60`、`PUBLIC`、`"..."`）以及与字段参数一致的变量占位符 `$`、`$name`、`$:Type`、`$name:Type`、`$name:Type=默认值`，变量会自动加入操作头部的变量定义（匿名 `$` 的变量名为 `<路径>_<指令名>_<参数名>`）。
+- **`@include` / `@skip`**：必须且只能包含 `if` 参数，取值为布尔字面量或变量；变量未声明类型时自动推断为 `Boolean!`；同一字段上不能重复。
+- **自定义指令**：任意指令名与参数，如 `directive='cached(ttl:60)'`；无参指令可写成 `directive=live`。
+- **适用位置**：普通字段、嵌套结构体字段、Fragment 内的字段，以及 union 分支（输出为 `... on Type @include(if:$x) { ... }`，写在嵌入行，如 ``graphql:",type=Image,directive='include(if:$withImages)'"``）。字段平铺用的匿名嵌入不支持指令。
+- 引号内若需字符串字面量，使用双引号并在 struct tag 中转义，如 ``graphql:"summary,directive='truncate(suffix:\"...\")'"``。
+
+```go
+type Query struct {
+	User struct {
+		ID      string `graphql:"id"`
+		Email   string `graphql:"email,directive='include(if:$withEmail:Boolean!)'"`
+		Friends []struct {
+			Name string `graphql:"name"`
+		} `graphql:"friends(first:10),alias=topFriends,directive='skip(if:$hideFriends)',directive='cached(ttl:60)'"`
+	} `graphql:"user(id:$id:ID!),directive='include(if:$withUser:Boolean=true)'"`
+}
+```
+
+`q.Query("GetUser")` 输出：
+
+```text
+query GetUser($id:ID!,$withUser:Boolean=true,$withEmail:Boolean!,$hideFriends:Boolean!) {
+  user(id:$id) @include(if:$withUser){
+    id
+    email @include(if:$withEmail)
+    topFriends:friends(first:10) @skip(if:$hideFriends) @cached(ttl:60){
+      name
+    }
+  }
+}
+```
 
 ## 输出结构
 - `Graphql.Body`：完整查询体字符串。
 - `Graphql.Variables`：占位符变量列表（Name 为 `$xxx`，Path 表示层级路径，Type 为变量类型如 `String!`、`Int!`），按首次出现的顺序排列。
 - `Graphql.Fragments`：去重生成的 Fragment 定义，按首次使用的顺序排列。
-
-> **输出稳定**：字段参数按 tag 中的书写顺序输出，变量定义按首次出现的顺序输出，Fragment 按首次使用的顺序输出；同一结构体多次生成的结果完全一致，便于快照测试与缓存。
 - `Graphql.Query(name string)`：组装完整的 GraphQL 查询字符串，包含操作声明、变量定义、查询体和 Fragments。
 - `Graphql.Mutation(name string)`：组装完整的 GraphQL 变更字符串，包含操作声明、变量定义、查询体和 Fragments。
 - `Graphql.Subscription(name string)`：组装完整的 GraphQL 订阅字符串，包含操作声明、变量定义、查询体和 Fragments。
+
+> **输出稳定**：字段参数按 tag 中的书写顺序输出，变量定义按首次出现的顺序输出，Fragment 按首次使用的顺序输出；同一结构体多次生成的结果完全一致，便于快照测试与缓存。
 
 ## 格式化
 默认缩进为两个空格，可通过 `graphql.SetIndent("    ")` 覆盖。
@@ -114,5 +153,5 @@ query GetData($list_query:String!,$id:Int!) {
 - [x] **Variable definitions（变量定义）** - 支持生成变量定义部分（如 `($episode: Episode)`），通过 `Query(name)` 方法自动生成
 - [x] **Mutations（变更）** - 支持生成 mutation 操作，通过 `Mutation(name)` 方法
 - [x] **Default variables（默认变量值）** - 支持变量默认值（如 `$episode: Episode = JEDI`）
-- [ ] **Directives（指令）** - 指令功能支持（如 `@include`、`@skip` 等）
+- [x] **Directives（指令）** - 字段与 union 分支指令，支持 `@include`、`@skip` 及自定义指令，使用 `directive='...'` 语法
 - [x] **Subscriptions（订阅）** - 支持生成 subscription 操作，通过 `Subscription(name)` 方法
