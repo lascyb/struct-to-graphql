@@ -22,7 +22,30 @@ type Graphql struct {
 	Fragments []*core.Fragment // 复用结构模块数组，按首次使用的顺序排列
 }
 
-func Marshal(v any) (*Graphql, error) {
+// TypeNamer 由结构体实现（值或指针接收者），声明其 GraphQL Schema 类型名，
+// 用于 fragment X on <Type> 与 union 分支 ... on <Type>（core.TypeNamer 的别名）
+type TypeNamer = core.TypeNamer
+
+// FragmentNamer 由结构体实现（值或指针接收者），声明其生成 Fragment 时使用的名称（core.FragmentNamer 的别名）
+type FragmentNamer = core.FragmentNamer
+
+// Option Marshal 的可选参数（core.Option 的别名），由 WithFragment、WithIndent 创建
+type Option = core.Option
+
+// WithFragment 控制是否把被多次引用的命名结构体抽取为顶层 fragment，默认 true。
+// 传 false 时这些结构体在每个引用处原地展开，Graphql.Fragments 为空；union 分支仍输出 "... on Type { ... }"。
+func WithFragment(enable bool) Option {
+	return core.WithFragment(enable)
+}
+
+// WithIndent 设置本次 Marshal 的单级缩进，优先于全局 SetIndent，且不修改全局设置
+func WithIndent(val string) Option {
+	return core.WithIndent(val)
+}
+
+// Marshal 把带 graphql tag 的结构体解析为 GraphQL 选择集、变量与 Fragment。
+// opts 为可选参数（WithFragment、WithIndent），nil 会被忽略；同一选项传多次时以最后一次为准。
+func Marshal(v any, opts ...Option) (*Graphql, error) {
 	if v == nil {
 		return nil, errors.New("struct to parse cannot be nil")
 	}
@@ -35,7 +58,7 @@ func Marshal(v any) (*Graphql, error) {
 		return nil, fmt.Errorf("graphql: %s has no queryable fields (no exported fields, or all fields are skipped)", typ)
 	}
 
-	builder := core.NewBuilder()
+	builder := core.NewBuilder(opts...)
 	body, err := builder.Build(parser)
 	if err != nil {
 		return nil, err
@@ -113,7 +136,7 @@ func (g *Graphql) Subscription(name string) (string, error) {
 	return g.build("subscription", name)
 }
 
-// SetIndent 设置生成结果的单级缩进（默认两个空格），并发安全；对之后开始的 Marshal 调用生效
+// SetIndent 设置生成结果的全局单级缩进（默认两个空格），并发安全；对之后开始、且未传 WithIndent 的 Marshal 调用生效
 func SetIndent(val string) {
 	core.SetIndent(val)
 }
