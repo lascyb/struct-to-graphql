@@ -30,7 +30,13 @@ const (
 // Build 对 v 执行 Marshal 并组装指定类型的完整操作，任一步失败都会终止测试
 func Build(t testing.TB, v any, op Op, name string) (*graphql.Graphql, string) {
 	t.Helper()
-	exec, err := graphql.Marshal(v)
+	return BuildWithOptions(t, v, op, name)
+}
+
+// BuildWithOptions 与 Build 相同，但把 opts 透传给 Marshal（如 graphql.WithFragment(false)）
+func BuildWithOptions(t testing.TB, v any, op Op, name string, opts ...graphql.Option) (*graphql.Graphql, string) {
+	t.Helper()
+	exec, err := graphql.Marshal(v, opts...)
 	if err != nil {
 		t.Fatalf("Marshal failed: %v", err)
 	}

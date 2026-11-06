@@ -14,7 +14,8 @@ type Builder struct {
 	fragmentOrder []reflect.Type          // Fragment 首次使用的顺序，保证输出稳定
 	fragmentNames map[string]reflect.Type // 已分配的 Fragment 名称，用于处理重名
 	variableOrder []string                // 变量首次出现的顺序，保证输出稳定
-	indent        string                  // 构建开始时的缩进快照，避免并发 SetIndent 导致输出不一致
+	indent        string                  // 构建开始时的缩进快照（或 WithIndent 指定的值），避免并发 SetIndent 导致输出不一致
+	fragment      bool                    // 是否把多次引用的命名结构体抽取为顶层 Fragment（WithFragment，默认 true）
 }
 
 // Fragment GraphQL Fragment
@@ -34,14 +35,27 @@ type Variable struct {
 	Default      string      // 默认值的 GraphQL 写法（如 "abc"、CREATED_AT、[1,2]），用于变量定义中的 "=value"
 }
 
-func NewBuilder() *Builder {
-	return &Builder{
+// NewBuilder 创建构建器；opts 为可选参数（WithFragment、WithIndent），nil 会被忽略，后传入的覆盖先传入的
+func NewBuilder(opts ...Option) *Builder {
+	b := &Builder{
 		FragmentMap:   make(map[reflect.Type]*Fragment),
 		VariableMap:   make(map[string]*Variable),
 		currentPaths:  []string{},
 		fragmentNames: make(map[string]reflect.Type),
 		indent:        Indent(),
+		fragment:      true,
 	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(b)
+		}
+	}
+	return b
+}
+
+// asFragment 判断该类型是否应抽取为顶层 Fragment：开启了 Fragment、被多次引用且为命名类型（匿名结构体无法生成 Fragment）
+func (g *Builder) asFragment(typeParser *TypeParser) bool {
+	return g.fragment && typeParser.Reused > 1 && typeParser.source.Name() != ""
 }
 
 // Variables 按首次出现的顺序返回所有变量
@@ -85,7 +99,7 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 	if typeParser == nil {
 		return "", nil
 	}
-	if typeParser.Reused > 1 && typeParser.source.Name() != "" {
+	if g.asFragment(typeParser) {
 		if fragment, ok := g.FragmentMap[typeParser.source]; ok {
 			if inlineType && !isUnionSubType {
 				return fmt.Sprintf("\n%s...%s", g.indentWithLevel(level+1), fragment.Name), nil
@@ -183,7 +197,7 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 		buf.WriteString("}")
 
 		// 处理重用类型：当类型被多次引用且不是顶级类型时，应封装为 Fragment（匿名结构体无法生成 Fragment，跳过）
-		if typeParser.Reused > 1 && typeParser.source.Name() != "" {
+		if g.asFragment(typeParser) {
 			fragmentName := g.fragmentName(typeParser.source)
 			// 类型条件使用 Go 类型名；泛型类型去掉类型参数部分（如 Page[Item] → Page）
 			fragmentType, _, _ := strings.Cut(typeParser.source.Name(), "[")

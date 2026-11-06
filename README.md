@@ -132,9 +132,9 @@ type Query struct {
 
 ### Fragment 命名
 
-同一个命名结构体在查询中出现多次时会生成 Fragment：
+同一个命名结构体在查询中出现多次时会生成 Fragment（可用 `graphql.WithFragment(false)` 关闭，见 [Marshal 选项](#marshal-选项)）：
 
-- Fragment 名默认为 Go 类型名（首字母大写），**不再带包名前缀**，如 `UserInfo`；类型条件（`on Xxx`）为 Go 类型名，因此请让 Go 类型名与 GraphQL 类型名一致。
+- Fragment 名默认为 Go 类型名（首字母大写），**不再带包名前缀**，如 `UserInfo`；类型条件（`on Xxx`）为 Go 类型名，因此请让 Go 类型名与 GraphQL 类型名一致（做不到时可用 `WithFragment(false)` 关闭 Fragment）。
 - 泛型类型的 Fragment 名为「类型名_类型参数短名」，如 `Page[Item]` → `Page_Item`、`Pair[string,int]` → `Pair_String_Int`，类型条件为去掉类型参数的 `Page`。
 - 不同类型得到相同的名字时（如不同包下的同名类型），后完成构建的类型追加包名后缀（如 `UserInfo_models`），仍然冲突时继续追加 `_2`、`_3`……；分配顺序固定，结果稳定。
 - 只通过匿名嵌入（字段平铺）复用的类型不会生成 Fragment；union 分支类型如果在别处也被使用，分支内输出为 `... on Type { ...Type }`。
@@ -195,10 +195,33 @@ query GetUser($id:ID!,$withUser:Boolean=true,$withEmail:Boolean!,$hideFriends:Bo
 - **错误信息**：tag 语法错误统一由 tagkit 报告，格式为 `field [<字段>]: <描述> at position <字节偏移>`，可通过 `errors.As(err, &se)`（`se *tagkit.SyntaxError`）取得出错位置。原来的 `invalid tag "..."`、`参数 x 重复声明` 分别变为 `unterminated string at position N`、`duplicate argument "x" at position N`。
 - **`Arg.Value`**（`core.Arg` 内嵌的 `tagkit.ArgValue`）：列表字面量参数的 `Value` 由渲染后的字符串（如 `"[1,2]"`）改为 `[]interface{}`，`null` 的 `Value` 由字符串 `"null"` 改为 `nil`；需要 GraphQL 写法时请使用 `Arg.Literal`。`Arg.ArgValue` 新增 `Kind`、`Literal`、`Default` 字段。
 
+## Marshal 选项
+
+`Marshal(v any, opts ...graphql.Option)` 支持可选参数，不传时行为与之前完全一致；同一选项传多次时以最后一次为准，传入 `nil` 会被忽略。
+
+| 选项 | 默认值 | 作用 |
+| --- | --- | --- |
+| `graphql.WithFragment(enable bool)` | `true` | 是否把多次引用的命名结构体抽取为顶层 `fragment` |
+| `graphql.WithIndent(val string)` | `SetIndent` 设置的全局缩进（默认两个空格） | 只对本次调用生效的单级缩进 |
+
+```go
+q, err := graphql.Marshal(Query{}, graphql.WithFragment(false), graphql.WithIndent("    "))
+```
+
+**`WithFragment(false)`**：复用的结构体在每个引用处原地展开为 `{ ... }`，`Graphql.Fragments` 为空切片，生成的文档里没有 `fragment` 定义。
+
+- 匿名嵌入的复用结构体照常平铺到父级，不再输出 `...TypeName`。
+- union 分支仍然输出 `... on Type { ... }`，分支内直接展开字段，不再是 `... on Type { ...Type }`。
+- 结构体里的匿名变量（`$:Type`）按每个引用处的实际路径分别命名，如 `$author_avatar_size`、`$others_avatar_size`；具名变量（`$id:ID!`）照常去重，`Paths` 记录所有出现位置。
+- 由于不生成 `fragment ... on Type`，复用的 Go 结构体（如 `UserDTO`）的类型名不需要与服务端 Schema 的类型名一致。
+- 代价是查询文本更长，复用越多越明显。
+
+**`WithIndent(val)`**：覆盖本次调用的缩进（包括 Fragment 的 Body），不修改全局设置，也不影响其他并发或之后的 `Marshal` 调用。`WithIndent("")` 表示不缩进。
+
 ## 输出结构
 - `Graphql.Body`：完整查询体字符串。
 - `Graphql.Variables`：占位符变量列表（`graphql.Variable`：Name 为 `$xxx`，Paths 为出现位置的层级路径，Type 为变量类型如 `String!`、`Int!`，HasDefault/Default 为是否有默认值及其 GraphQL 写法），按首次出现的顺序排列。
-- `Graphql.Fragments`：去重生成的 Fragment 定义（`graphql.Fragment`：Name、Type、Body），按首次使用的顺序排列。
+- `Graphql.Fragments`：去重生成的 Fragment 定义（`graphql.Fragment`：Name、Type、Body），按首次使用的顺序排列；使用 `WithFragment(false)` 时为空切片。
 - `Graphql.Query(name string)`：组装完整的 GraphQL 查询字符串，包含操作声明、变量定义、查询体和 Fragments。
 - `Graphql.Mutation(name string)`：组装完整的 GraphQL 变更字符串，包含操作声明、变量定义、查询体和 Fragments。
 - `Graphql.Subscription(name string)`：组装完整的 GraphQL 订阅字符串，包含操作声明、变量定义、查询体和 Fragments。
@@ -206,7 +229,10 @@ query GetUser($id:ID!,$withUser:Boolean=true,$withEmail:Boolean!,$hideFriends:Bo
 > **输出稳定**：字段参数按 tag 中的书写顺序输出，变量定义按首次出现的顺序输出，Fragment 按首次使用的顺序输出；同一结构体多次生成的结果完全一致，便于快照测试与缓存。
 
 ## 格式化
-默认缩进为两个空格，可通过 `graphql.SetIndent("    ")` 覆盖。`SetIndent` 修改的是全局设置，并发安全；每次 `Marshal` 在开始时读取一次缩进，已经在执行的 `Marshal` 不受影响。
+默认缩进为两个空格，有两种方式修改：
+
+- `graphql.Marshal(v, graphql.WithIndent("    "))`：只对这一次调用生效，优先级最高，推荐使用。
+- `graphql.SetIndent("    ")`：修改全局默认值，对之后所有未传 `WithIndent` 的 `Marshal` 生效。`SetIndent` 并发安全；每次 `Marshal` 在开始时读取一次缩进，已经在执行的 `Marshal` 不受影响。
 
 `Marshal` 本身没有共享状态，可以在多个 goroutine 中并发调用。
 
@@ -215,7 +241,7 @@ query GetUser($id:ID!,$withUser:Boolean=true,$withEmail:Boolean!,$hideFriends:Bo
 - [x] **Arguments（参数）** - 字段参数支持，支持静态值和变量占位符
 - [x] **Aliases（别名）** - 字段别名，使用 `alias=aliasName` 语法
 - [x] **Variables（变量）** - 变量占位符，支持 `$` 匿名占位符和自定义变量名
-- [x] **Fragments（片段）** - 可复用片段，自动生成和去重
+- [x] **Fragments（片段）** - 可复用片段，自动生成和去重，可用 `WithFragment(false)` 关闭
 - [x] **Inline Fragments（内联片段）** - 联合类型支持，使用 `__typename` 字段中的 `union` 标记自动生成
 - [x] **Meta fields（元字段）** - 支持 `__typename` 字段
 - [x] **Operation type and name（操作类型和名称）** - 支持生成完整的操作声明（如 `query GetUser { ... }`），通过 `Query(name)` 方法

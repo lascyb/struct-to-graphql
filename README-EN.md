@@ -151,9 +151,9 @@ type Query struct {
 
 ### Fragment naming
 
-A named struct that appears more than once in a query is emitted as a fragment:
+A named struct that appears more than once in a query is emitted as a fragment (disable with `graphql.WithFragment(false)`, see [Marshal options](#marshal-options)):
 
-- The fragment name is the Go type name (first letter upper-cased) **without the package prefix**, e.g. `UserInfo`. The type condition (`on Xxx`) is the Go type name, so keep Go type names aligned with GraphQL type names.
+- The fragment name is the Go type name (first letter upper-cased) **without the package prefix**, e.g. `UserInfo`. The type condition (`on Xxx`) is the Go type name, so keep Go type names aligned with GraphQL type names (or disable fragments with `WithFragment(false)` when you cannot).
 - Generic types are named `TypeName_TypeArgShortNames`, e.g. `Page[Item]` → `Page_Item`, `Pair[string,int]` → `Pair_String_Int`; the type condition is the name without type parameters (`Page`).
 - When two different types end up with the same name (e.g. same-named types from different packages), the type that finishes building later gets the package name appended (`UserInfo_models`), then `_2`, `_3`, ... if still taken. The assignment order is fixed, so output stays deterministic.
 - Types reused only through anonymous embedding (field flattening) never become fragments; a union branch type that is also used elsewhere is rendered as `... on Type { ...Type }`.
@@ -214,10 +214,33 @@ Tag parsing is done by [tagkit](https://github.com/lascyb/tagkit), now upgraded 
 - **Error messages**: tag syntax errors are reported by tagkit as `field [<field>]: <message> at position <byte offset>`; use `errors.As(err, &se)` with `se *tagkit.SyntaxError` to get the position. The former `invalid tag "..."` and `参数 x 重复声明` errors became `unterminated string at position N` and `duplicate argument "x" at position N`.
 - **`Arg.Value`** (the embedded `tagkit.ArgValue` of `core.Arg`): for list literal arguments `Value` changed from the rendered string (e.g. `"[1,2]"`) to `[]interface{}`, and for `null` from the string `"null"` to `nil`; use `Arg.Literal` for the GraphQL form. `Arg.ArgValue` gains `Kind`, `Literal` and `Default`.
 
+## Marshal options
+
+`Marshal(v any, opts ...graphql.Option)` accepts optional arguments; without them it behaves exactly as before. If the same option is passed more than once, the last one wins; `nil` options are ignored.
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| `graphql.WithFragment(enable bool)` | `true` | Whether named structs referenced more than once are extracted into top-level `fragment`s |
+| `graphql.WithIndent(val string)` | the global indentation set by `SetIndent` (two spaces by default) | Per-call indentation unit |
+
+```go
+q, err := graphql.Marshal(Query{}, graphql.WithFragment(false), graphql.WithIndent("    "))
+```
+
+**`WithFragment(false)`**: reused structs are expanded inline as `{ ... }` at every occurrence, `Graphql.Fragments` is an empty slice, and the document contains no `fragment` definitions.
+
+- Reused structs embedded anonymously are flattened into the parent as usual instead of emitting `...TypeName`.
+- Union branches still render as `... on Type { ... }`, with the fields expanded directly inside instead of `... on Type { ...Type }`.
+- Anonymous variables (`$:Type`) inside a reused struct are named after each occurrence's actual path, e.g. `$author_avatar_size` and `$others_avatar_size`; named variables (`$id:ID!`) are still deduplicated, and `Paths` records every occurrence.
+- Since no `fragment ... on Type` is emitted, the Go type name of a reused struct (e.g. `UserDTO`) does not need to match the GraphQL type name in the server schema.
+- The trade-off is a longer query text, especially with heavy reuse.
+
+**`WithIndent(val)`**: overrides the indentation for this call (fragment bodies included) without touching the global setting, so concurrent and later `Marshal` calls are unaffected. `WithIndent("")` disables indentation.
+
 ## Output Structure
 - `Graphql.Body`: Complete query body string.
 - `Graphql.Variables`: Placeholder variable list (`graphql.Variable`: Name is `$xxx`, Paths lists the hierarchical paths where it is used, Type is the variable type such as `String!`, `Int!`, HasDefault/Default tell whether it has a default value and its GraphQL literal), in order of first appearance.
-- `Graphql.Fragments`: Deduplicated generated Fragment definitions (`graphql.Fragment`: Name, Type, Body), in order of first use.
+- `Graphql.Fragments`: Deduplicated generated Fragment definitions (`graphql.Fragment`: Name, Type, Body), in order of first use; an empty slice with `WithFragment(false)`.
 - `Graphql.Query(name string)`: Assembles a complete GraphQL query string, including operation declaration, variable definitions, query body, and Fragments.
 - `Graphql.Mutation(name string)`: Assembles a complete GraphQL mutation string, including operation declaration, variable definitions, query body, and Fragments.
 - `Graphql.Subscription(name string)`: Assembles a complete GraphQL subscription string, including operation declaration, variable definitions, query body, and Fragments.
@@ -225,7 +248,10 @@ Tag parsing is done by [tagkit](https://github.com/lascyb/tagkit), now upgraded 
 > **Deterministic output**: field arguments are emitted in the order they are written in the tag, variable definitions in order of first appearance, and fragments in order of first use; generating the same struct repeatedly always yields identical output, which makes snapshot testing and caching easy.
 
 ## Formatting
-Default indentation is two spaces, can be overridden with `graphql.SetIndent("    ")`. `SetIndent` changes a global setting and is safe for concurrent use; each `Marshal` call reads the indentation once when it starts, so calls already in progress are not affected.
+Default indentation is two spaces. There are two ways to change it:
+
+- `graphql.Marshal(v, graphql.WithIndent("    "))`: applies to this call only and takes precedence; recommended.
+- `graphql.SetIndent("    ")`: changes the global default for every later `Marshal` call that does not pass `WithIndent`. `SetIndent` is safe for concurrent use; each `Marshal` call reads the indentation once when it starts, so calls already in progress are not affected.
 
 `Marshal` itself has no shared state and may be called from multiple goroutines concurrently.
 
@@ -234,7 +260,7 @@ Default indentation is two spaces, can be overridden with `graphql.SetIndent("  
 - [x] **Arguments** - Field arguments with static values and variable placeholders
 - [x] **Aliases** - Field aliases using `alias=aliasName` syntax
 - [x] **Variables** - Variable placeholders supporting `$` anonymous placeholders and custom variable names
-- [x] **Fragments** - Reusable fragments with automatic generation and deduplication
+- [x] **Fragments** - Reusable fragments with automatic generation and deduplication; can be disabled with `WithFragment(false)`
 - [x] **Inline Fragments** - Union type support, automatically generated using `union` flag
 - [x] **Meta fields** - Support for `__typename` field
 - [x] **Operation type and name** - Support for generating complete operation declarations (e.g., `query GetUser { ... }`), via `Query(name)` method

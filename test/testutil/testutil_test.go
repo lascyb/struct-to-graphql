@@ -123,6 +123,14 @@ func TestAssertionsReportFailures(t *testing.T) {
 	expectFail(t, "AssertGoldenMissing", func(tb testing.TB) { AssertGolden(tb, "does-not-exist", "x") }, "run with -update")
 }
 
+func TestBuildWithOptions(t *testing.T) {
+	t.Parallel()
+	exec, got := BuildWithOptions(t, keysEmbedded{}, OpQuery, "Q", graphql.WithIndent("\t"), graphql.WithFragment(false))
+	if !strings.HasPrefix(got, "query Q {\n\t") || len(exec.Fragments) != 0 {
+		t.Fatalf("options not applied: %q", got)
+	}
+}
+
 func TestOps(t *testing.T) {
 	t.Parallel()
 	for op, prefix := range map[Op]string{OpQuery: "query Q", OpMutation: "mutation Q", OpSubscription: "subscription Q", "": "query Q"} {
