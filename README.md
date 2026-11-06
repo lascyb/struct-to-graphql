@@ -64,7 +64,7 @@ query GetData($list_query:String!,$id:Int!) {
 |------|------|
 | 可运行示例（`go doc` 中可见）与基准测试 | [example_test.go](./example_test.go) |
 | 字段、参数、别名、匿名结构体、union、Fragment、边界情况等 | [test/test_graphql](./test/test_graphql)（按文件拆分，长输出位于 `testdata/*.golden`） |
-| `union`、`type=xxx` 等 tag flag | [test/test_flag](./test/test_flag) |
+| `union`、`type=xxx`、`fragment=xxx` 等 tag flag，`GraphQLType()` / `GraphQLFragment()` | [test/test_graphql/naming_test.go](./test/test_graphql/naming_test.go)、[test/test_flag](./test/test_flag) |
 | 常见错误用法 | [test/test_error/common_misuse_test.go](./test/test_error/common_misuse_test.go) |
 | Query 列表/分页/变量默认值 | [test/test_query/discountNodes_test.go](./test/test_query/discountNodes_test.go) |
 | Directives（指令） | [test/test_graphql/directive_test.go](./test/test_graphql/directive_test.go)、[test/test_error/directive_misuse_test.go](./test/test_error/directive_misuse_test.go) |
@@ -93,9 +93,12 @@ go test -run='^$' -bench=. .                                  # 基准测试
     ```go
     YourBranchType `graphql:",type=YourGraphQLTypeName"`
     ```
+  - 也可以让分支结构体实现 `GraphQLType() string`（见 [自定义 Fragment 名与类型条件](#自定义-fragment-名与类型条件)），这样每个 union 里都不用再写 `type=`；嵌入行上的 `type=` 优先级更高。
+  - 泛型结构体作为分支时，`... on` 默认使用去掉类型参数的类型名（`Box[int]` → `Box`）。
 - `graphql:"field(arg1:1,arg2:$,arg3:$value3,...)"`：支持参数，值中 `$` 作为占位符自动生成变量名（`<路径>_<参数名>`，驼峰转下划线），可用 `query:$custom` 指定变量名。参数按 tag 中的书写顺序输出，同一参数不能重复声明；字面量的写法见下方 [参数字面量](#参数字面量)。
 - `graphql:"field(arg:$:Type1,arg2:$varName:Type2)"`：支持为变量指定类型，格式为 `$:Type`（匿名占位符）或 `$varName:Type`（自定义变量名），如 `query:$:String!`、`id:$id:Int!`；可追加默认值 `$first:Int=10`。
 - `graphql:"field,directive='include(if:$show:Boolean!)'"`：为字段添加指令，详见下方 [指令（Directives）](#指令directives)。
+- `graphql:"field,type=User,fragment=UserFields"`：为复用结构体指定 Fragment 的类型条件与名称，适合无法添加方法的第三方类型，详见 [自定义 Fragment 名与类型条件](#自定义-fragment-名与类型条件)。`type=`、`fragment=` 的值必须是合法的 GraphQL 名称（`[_A-Za-z][_0-9A-Za-z]*`，Fragment 名不能是 `on`），否则 `Marshal` 返回错误。
 
 > **字段平铺**：将嵌套结构体的字段平铺到父级，使用 **Go 匿名嵌入** 即可。当前实现中，**仅匿名字段**会作为内联展开；不再依赖单独的 `inline` 标记。匿名嵌入在查询生成与 `encoding/json` 反序列化中均为扁平结构，与常见用法一致。
 
@@ -134,10 +137,49 @@ type Query struct {
 
 同一个命名结构体在查询中出现多次时会生成 Fragment（可用 `graphql.WithFragment(false)` 关闭，见 [Marshal 选项](#marshal-选项)）：
 
-- Fragment 名默认为 Go 类型名（首字母大写），**不再带包名前缀**，如 `UserInfo`；类型条件（`on Xxx`）为 Go 类型名，因此请让 Go 类型名与 GraphQL 类型名一致（做不到时可用 `WithFragment(false)` 关闭 Fragment）。
+- Fragment 名默认为 Go 类型名（首字母大写），**不再带包名前缀**，如 `UserInfo`；类型条件（`on Xxx`）为 Go 类型名，两者不一致时可实现 `GraphQLType()`，或在字段上写 `type=X`，见下方 [自定义 Fragment 名与类型条件](#自定义-fragment-名与类型条件)；也可以用 `WithFragment(false)` 关闭 Fragment。
 - 泛型类型的 Fragment 名为「类型名_类型参数短名」，如 `Page[Item]` → `Page_Item`、`Pair[string,int]` → `Pair_String_Int`，类型条件为去掉类型参数的 `Page`。
 - 不同类型得到相同的名字时（如不同包下的同名类型），后完成构建的类型追加包名后缀（如 `UserInfo_models`），仍然冲突时继续追加 `_2`、`_3`……；分配顺序固定，结果稳定。
 - 只通过匿名嵌入（字段平铺）复用的类型不会生成 Fragment；union 分支类型如果在别处也被使用，分支内输出为 `... on Type { ...Type }`。
+
+### 自定义 Fragment 名与类型条件
+
+Go 类型名和 Schema 类型名不一致时（如 Go 里叫 `UserDTO`，Schema 里叫 `User`），可以让结构体实现下面的接口（值接收者、指针接收者都可以）：
+
+| 方式 | 作用 | 用在 |
+| --- | --- | --- |
+| `GraphQLType() string`（`graphql.TypeNamer`） | Schema 类型名 | `fragment X on <Type>`、union 分支 `... on <Type>` |
+| `GraphQLFragment() string`（`graphql.FragmentNamer`） | Fragment 名 | `fragment <Name> on ...`、`...<Name>` |
+| 字段 tag `type=X` | 同 `GraphQLType()`，用于无法添加方法的第三方类型 | 同上 |
+| 字段 tag `fragment=X` | 同 `GraphQLFragment()`，用于第三方类型 | 同上 |
+
+```go
+type UserDTO struct {
+	ID   string `json:"id" graphql:"id"`
+	Name string `json:"name" graphql:"name"`
+}
+
+func (UserDTO) GraphQLType() string { return "User" }           // fragment UserDTO on User
+func (UserDTO) GraphQLFragment() string { return "UserFields" } // 可选：fragment UserFields on User
+
+// 第三方类型：在任一引用字段上写 tag 即可
+Author pkg.Account `graphql:"author,type=User,fragment=UserFields"`
+```
+
+规则：
+
+- 返回值会去除首尾空白，空字符串视为未声明；非法名称（如 `bad-name`、`123`、Fragment 名 `on`）返回错误。
+- **union 分支的 `... on <Type>`**：嵌入行上的 `type=X` > 结构体的 `GraphQLType()` > Go 类型名。
+- **Fragment 的类型条件 `on <Type>`**：
+  - 结构体实现了 `GraphQLType()` 时使用它；此时普通字段上的 `type=X` 必须与之一致，否则报错。union 分支上的 `type=X` 只决定 `... on`，可以不同，比如 `GraphQLType()` 返回接口名 `Node`、两个分支分别是 `... on BranchA { ...SharedNode }` 和 `... on BranchB { ...SharedNode }`。
+  - 没有实现时，使用引用该结构体的字段上的 `type=X`：只在一个字段上写，或者多个字段写同一个值都可以；写了不同的值会报错，因为只生成一个 Fragment。此时可以实现 `GraphQLType()`，或者使用 `WithFragment(false)`。
+  - 都没有时使用 Go 类型名。
+- **Fragment 名**：`GraphQLFragment()` > 引用字段上一致的 `fragment=X`（不一致时报错）> 自动生成。
+  - 只实现 `GraphQLType()` 时 Fragment 名仍是 Go 类型名，所以 `UserCardDTO`、`UserDetailDTO` 都映射到 `User` 也不会重名：`fragment UserCardDTO on User`、`fragment UserDetailDTO on User`。
+  - 显式名称保持原样；两个类型显式声明了同一个名字时返回错误。自动生成的名字与显式名字相同时，自动生成的一方追加包名后缀，与字段顺序无关。
+- 使用 `WithFragment(false)` 时不生成 Fragment，不做上述冲突检查，名称合法性校验照常进行。
+
+> **行为变更**：`type=` 的值不是合法 GraphQL 名称（如 `type='bad-type'`、`type=123`）时，以前会原样输出或被忽略，现在返回错误。union 分支用 `type=X` 改了名、又在别处复用时，生成的 Fragment 以前是 `on <Go 类型名>`，现在是 `on X`。
 
 > **行为变更**：旧版本的 Fragment 名为「包名 + 类型名」（如 `Test_graphqlUserInfo`），泛型类型会生成非法名称。Fragment 名只出现在查询内部，不影响响应 JSON 的结构。
 

@@ -22,6 +22,13 @@ type Graphql struct {
 	Fragments []*core.Fragment // 复用结构模块数组，按首次使用的顺序排列
 }
 
+// TypeNamer 由结构体实现（值或指针接收者），声明其 GraphQL Schema 类型名，
+// 用于 fragment X on <Type> 与 union 分支 ... on <Type>（core.TypeNamer 的别名）
+type TypeNamer = core.TypeNamer
+
+// FragmentNamer 由结构体实现（值或指针接收者），声明其生成 Fragment 时使用的名称（core.FragmentNamer 的别名）
+type FragmentNamer = core.FragmentNamer
+
 // Option Marshal 的可选参数（core.Option 的别名），由 WithFragment、WithIndent 创建
 type Option = core.Option
 

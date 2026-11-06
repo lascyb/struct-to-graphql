@@ -16,6 +16,8 @@ type Builder struct {
 	variableOrder []string                // 变量首次出现的顺序，保证输出稳定
 	indent        string                  // 构建开始时的缩进快照（或 WithIndent 指定的值），避免并发 SetIndent 导致输出不一致
 	fragment      bool                    // 是否把多次引用的命名结构体抽取为顶层 Fragment（WithFragment，默认 true）
+	fragmentTypes map[reflect.Type]string // 每个 Fragment 的类型条件（on <Type>），由 prepareFragments 确定
+	explicitNames map[reflect.Type]string // 通过 GraphQLFragment() 或 fragment=X 显式指定的 Fragment 名
 }
 
 // Fragment GraphQL Fragment
@@ -44,6 +46,8 @@ func NewBuilder(opts ...Option) *Builder {
 		fragmentNames: make(map[string]reflect.Type),
 		indent:        Indent(),
 		fragment:      true,
+		fragmentTypes: make(map[reflect.Type]string),
+		explicitNames: make(map[reflect.Type]string),
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -83,6 +87,11 @@ func (g *Builder) Fragments() []*Fragment {
 func (g *Builder) Build(typeParser *TypeParser) (string, error) {
 	if typeParser == nil {
 		return "", fmt.Errorf("graphql: nothing to build, the struct has no queryable fields")
+	}
+	if g.fragment {
+		if err := g.prepareFragments(typeParser); err != nil {
+			return "", err
+		}
 	}
 	return g.buildSelectionSet(typeParser, false, typeParser.Union, 0)
 }
@@ -198,9 +207,12 @@ func (g *Builder) buildSelectionSet(typeParser *TypeParser, inlineType, isUnionS
 
 		// 处理重用类型：当类型被多次引用且不是顶级类型时，应封装为 Fragment（匿名结构体无法生成 Fragment，跳过）
 		if g.asFragment(typeParser) {
-			fragmentName := g.fragmentName(typeParser.source)
-			// 类型条件使用 Go 类型名；泛型类型去掉类型参数部分（如 Page[Item] → Page）
-			fragmentType, _, _ := strings.Cut(typeParser.source.Name(), "[")
+			fragmentName, ok := g.explicitNames[typeParser.source]
+			if !ok {
+				fragmentName = g.fragmentName(typeParser.source)
+			}
+			// 类型条件由 prepareFragments 确定：GraphQLType() > 引用字段一致的 type=X > Go 类型名（去掉泛型参数）
+			fragmentType := g.fragmentTypes[typeParser.source]
 			g.FragmentMap[typeParser.source] = &Fragment{
 				Name: fragmentName,
 				Type: fragmentType,

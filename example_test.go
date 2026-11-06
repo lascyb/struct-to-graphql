@@ -144,6 +144,40 @@ func ExampleWithIndent() {
 	// "{\n  viewer{\n    login\n  }\n}"
 }
 
+// AccountDTO 在 Go 里叫 AccountDTO，在 GraphQL Schema 里叫 User
+type AccountDTO struct {
+	ID    string `json:"id" graphql:"id"`
+	Email string `json:"email" graphql:"email"`
+}
+
+// GraphQLType 指定 Fragment 的类型条件（fragment ... on User）
+func (AccountDTO) GraphQLType() string { return "User" }
+
+// GraphQLFragment 指定 Fragment 名称（可选，默认为 Go 类型名 AccountDTO）
+func (AccountDTO) GraphQLFragment() string { return "AccountFields" }
+
+func ExampleTypeNamer() {
+	type query struct {
+		Viewer AccountDTO   `json:"viewer" graphql:"viewer"`
+		Admins []AccountDTO `json:"admins" graphql:"admins"`
+	}
+	q, err := graphql.Marshal(query{})
+	if err != nil {
+		panic(err)
+	}
+	out, _ := q.Query("Accounts")
+	fmt.Println(out)
+	// Output:
+	// fragment AccountFields on User{
+	//   id
+	//   email
+	// }
+	// query Accounts {
+	//   viewer{ ...AccountFields }
+	//   admins{ ...AccountFields }
+	// }
+}
+
 type benchComment struct {
 	ID     string `json:"id" graphql:"id"`
 	Body   string `json:"body" graphql:"body(format:MARKDOWN)"`

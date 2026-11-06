@@ -83,7 +83,7 @@ For more examples (unions, fragment reuse, anonymous embedding, mutation, subscr
 |----------|----------|
 | Runnable examples (shown in `go doc`) and benchmarks | [example_test.go](./example_test.go) |
 | Fields, arguments, aliases, anonymous structs, unions, fragments, edge cases (split by file) | [test/test_graphql](./test/test_graphql) (long outputs live in `testdata/*.golden`) |
-| `union`, `type=...` and other tag flags | [test/test_flag](./test/test_flag) |
+| `union`, `type=...`, `fragment=...` and other tag flags, `GraphQLType()` / `GraphQLFragment()` | [test/test_graphql/naming_test.go](./test/test_graphql/naming_test.go), [test/test_flag](./test/test_flag) |
 | Common misuses and expected errors | [test/test_error/common_misuse_test.go](./test/test_error/common_misuse_test.go) |
 | Query list / pagination / variable defaults | [test/test_query/discountNodes_test.go](./test/test_query/discountNodes_test.go) |
 | Directives | [test/test_graphql/directive_test.go](./test/test_graphql/directive_test.go), [test/test_error/directive_misuse_test.go](./test/test_error/directive_misuse_test.go) |
@@ -112,8 +112,11 @@ go test -run='^$' -bench=. .                                  # benchmarks
     ```go
     YourBranchType `graphql:",type=YourGraphQLTypeName"`
     ```
+  - Alternatively, make the branch struct implement `GraphQLType() string` (see [Custom fragment names and type conditions](#custom-fragment-names-and-type-conditions)), so no union needs `type=`; a `type=` on the embed line takes precedence.
+  - For a generic struct used as a branch, `... on` defaults to the type name without type parameters (`Box[int]` → `Box`).
 - `graphql:"field(arg1:1,arg2:$,arg3:$value3,...)"`: Supports parameters, `$` in values acts as a placeholder that automatically generates variable names (`<path>_<argName>`, camelCase converted to snake_case), use `query:$custom` to specify a custom variable name. Arguments are emitted in the order written and an argument may not be declared twice; see [Argument literals](#argument-literals) for how literal values are rendered.
 - `graphql:"field(arg:$:Type1,arg2:$varName:Type2)"`: Supports specifying variable types, format is `$:Type` (anonymous placeholder) or `$varName:Type` (custom variable name), e.g., `query:$:String!`, `id:$id:Int!`; a default value can be appended, e.g. `$first:Int=10`.
+- `graphql:"field,type=User,fragment=UserFields"`: sets the fragment type condition and name for a reused struct, mainly for third-party types you cannot add methods to; see [Custom fragment names and type conditions](#custom-fragment-names-and-type-conditions). Values of `type=` and `fragment=` must be valid GraphQL names (`[_A-Za-z][_0-9A-Za-z]*`, and a fragment name cannot be `on`), otherwise `Marshal` returns an error.
 - `graphql:"field,directive='include(if:$show:Boolean!)'"`: Adds a directive to the field, see [Directives](#directives) below.
 
 > **Field flattening**: To flatten nested struct fields to the parent level, use Go **anonymous embedding**. The builder treats **only anonymous fields** as inline expansion; a separate `inline` tag flag is not used. This matches common `encoding/json` behaviour.
@@ -153,10 +156,49 @@ type Query struct {
 
 A named struct that appears more than once in a query is emitted as a fragment (disable with `graphql.WithFragment(false)`, see [Marshal options](#marshal-options)):
 
-- The fragment name is the Go type name (first letter upper-cased) **without the package prefix**, e.g. `UserInfo`. The type condition (`on Xxx`) is the Go type name, so keep Go type names aligned with GraphQL type names (or disable fragments with `WithFragment(false)` when you cannot).
+- The fragment name is the Go type name (first letter upper-cased) **without the package prefix**, e.g. `UserInfo`. The type condition (`on Xxx`) is the Go type name by default; when they differ, implement `GraphQLType()` or set `type=X` on the field (see [Custom fragment names and type conditions](#custom-fragment-names-and-type-conditions)), or disable fragments with `WithFragment(false)`.
 - Generic types are named `TypeName_TypeArgShortNames`, e.g. `Page[Item]` → `Page_Item`, `Pair[string,int]` → `Pair_String_Int`; the type condition is the name without type parameters (`Page`).
 - When two different types end up with the same name (e.g. same-named types from different packages), the type that finishes building later gets the package name appended (`UserInfo_models`), then `_2`, `_3`, ... if still taken. The assignment order is fixed, so output stays deterministic.
 - Types reused only through anonymous embedding (field flattening) never become fragments; a union branch type that is also used elsewhere is rendered as `... on Type { ...Type }`.
+
+### Custom fragment names and type conditions
+
+When the Go type name differs from the schema type name (e.g. `UserDTO` in Go, `User` in the schema), have the struct implement these interfaces (value or pointer receiver both work):
+
+| Mechanism | Sets | Used in |
+| --- | --- | --- |
+| `GraphQLType() string` (`graphql.TypeNamer`) | schema type name | `fragment X on <Type>`, union branch `... on <Type>` |
+| `GraphQLFragment() string` (`graphql.FragmentNamer`) | fragment name | `fragment <Name> on ...`, `...<Name>` |
+| field tag `type=X` | same as `GraphQLType()`, for third-party types you cannot add methods to | same |
+| field tag `fragment=X` | same as `GraphQLFragment()`, for third-party types | same |
+
+```go
+type UserDTO struct {
+	ID   string `json:"id" graphql:"id"`
+	Name string `json:"name" graphql:"name"`
+}
+
+func (UserDTO) GraphQLType() string { return "User" }           // fragment UserDTO on User
+func (UserDTO) GraphQLFragment() string { return "UserFields" } // optional: fragment UserFields on User
+
+// Third-party type: put the tags on any referencing field
+Author pkg.Account `graphql:"author,type=User,fragment=UserFields"`
+```
+
+Rules:
+
+- Returned values are trimmed, and an empty string means "not set". Invalid names (e.g. `bad-name`, `123`, or `on` as a fragment name) make `Marshal` return an error.
+- **Union branch `... on <Type>`**: `type=X` on the embed line > the struct's `GraphQLType()` > the Go type name.
+- **Fragment type condition `on <Type>`**:
+  - If the struct implements `GraphQLType()`, that is used. A `type=X` on a regular (non-union) field must then match it, or `Marshal` returns an error. A `type=X` on a union branch only sets that branch's `... on` and may differ, e.g. `GraphQLType()` returns the interface `Node` while the branches are `... on BranchA { ...SharedNode }` and `... on BranchB { ...SharedNode }`.
+  - Otherwise the `type=X` of the fields referencing the struct is used. Setting it on one field, or the same value on several, is fine. Different values are an error because only one fragment is generated; implement `GraphQLType()` or use `WithFragment(false)` instead.
+  - With neither, the Go type name is used.
+- **Fragment name**: `GraphQLFragment()` > a consistent `fragment=X` on the referencing fields (an error if they differ) > auto-generated.
+  - With only `GraphQLType()`, the fragment name stays the Go type name, so `UserCardDTO` and `UserDetailDTO` can both map to `User` without clashing: `fragment UserCardDTO on User`, `fragment UserDetailDTO on User`.
+  - Explicit names are kept exactly, and two types declaring the same explicit name is an error. When an auto-generated name equals an explicit one, the auto-generated side gets the package suffix, regardless of field order.
+- With `WithFragment(false)` no fragments are generated, so these conflict checks are skipped; name validation still applies.
+
+> **Behavior change**: a `type=` value that is not a valid GraphQL name (e.g. `type='bad-type'`, `type=123`) used to be emitted as-is or ignored and is now an error. When a union branch renamed with `type=X` is also reused elsewhere, its fragment used to be `on <Go type name>` and is now `on X`.
 
 > **Behavior change**: fragments used to be named `<package><Type>` (e.g. `Test_graphqlUserInfo`), and generic types produced invalid names. Fragment names only appear inside the query and do not affect the shape of the JSON response.
 
