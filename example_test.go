@@ -103,6 +103,81 @@ func ExampleSetIndent() {
 	// "{\n\tviewer{\n\t\tlogin\n\t}\n}"
 }
 
+func ExampleWithFragment() {
+	// 关闭 Fragment：复用的 User 在每个引用处原地展开，不生成顶层 fragment
+	q, err := graphql.Marshal(Query{}, graphql.WithFragment(false))
+	if err != nil {
+		panic(err)
+	}
+	query, _ := q.Query("GetData")
+	fmt.Println(query)
+	fmt.Println(len(q.Fragments))
+	// Output:
+	// query GetData($id:ID!,$list_query:String!) {
+	//   user(id:$id){
+	//     id
+	//     name
+	//   }
+	//   list(first:10,query:$list_query,sortKey:CREATED_AT,status:"active"){
+	//     nodes{
+	//       id
+	//       name
+	//     }
+	//   }
+	// }
+	// 0
+}
+
+func ExampleWithIndent() {
+	type query struct {
+		Viewer struct {
+			Login string `json:"login" graphql:"login"`
+		} `json:"viewer" graphql:"viewer"`
+	}
+	// 只对本次调用生效，不影响全局 SetIndent
+	q, _ := graphql.Marshal(query{}, graphql.WithIndent("\t"))
+	fmt.Printf("%q\n", q.Body)
+	q, _ = graphql.Marshal(query{})
+	fmt.Printf("%q\n", q.Body)
+	// Output:
+	// "{\n\tviewer{\n\t\tlogin\n\t}\n}"
+	// "{\n  viewer{\n    login\n  }\n}"
+}
+
+// AccountDTO 在 Go 里叫 AccountDTO，在 GraphQL Schema 里叫 User
+type AccountDTO struct {
+	ID    string `json:"id" graphql:"id"`
+	Email string `json:"email" graphql:"email"`
+}
+
+// GraphQLType 指定 Fragment 的类型条件（fragment ... on User）
+func (AccountDTO) GraphQLType() string { return "User" }
+
+// GraphQLFragment 指定 Fragment 名称（可选，默认为 Go 类型名 AccountDTO）
+func (AccountDTO) GraphQLFragment() string { return "AccountFields" }
+
+func ExampleTypeNamer() {
+	type query struct {
+		Viewer AccountDTO   `json:"viewer" graphql:"viewer"`
+		Admins []AccountDTO `json:"admins" graphql:"admins"`
+	}
+	q, err := graphql.Marshal(query{})
+	if err != nil {
+		panic(err)
+	}
+	out, _ := q.Query("Accounts")
+	fmt.Println(out)
+	// Output:
+	// fragment AccountFields on User{
+	//   id
+	//   email
+	// }
+	// query Accounts {
+	//   viewer{ ...AccountFields }
+	//   admins{ ...AccountFields }
+	// }
+}
+
 type benchComment struct {
 	ID     string `json:"id" graphql:"id"`
 	Body   string `json:"body" graphql:"body(format:MARKDOWN)"`
@@ -125,6 +200,15 @@ func BenchmarkMarshal(b *testing.B) {
 	b.ReportAllocs()
 	for b.Loop() {
 		if _, err := graphql.Marshal(benchQuery{}); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkMarshal_NoFragment(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, err := graphql.Marshal(benchQuery{}, graphql.WithFragment(false)); err != nil {
 			b.Fatal(err)
 		}
 	}

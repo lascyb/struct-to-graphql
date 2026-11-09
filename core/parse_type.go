@@ -10,6 +10,9 @@ type TypeParser struct {
 	Fields []*FieldParser
 	Union  bool
 	Reused uint
+
+	graphQLType  string // 结构体 GraphQLType() 声明的类型名，未声明时为空
+	fragmentName string // 结构体 GraphQLFragment() 声明的 Fragment 名，未声明时为空
 }
 
 // ParseType 解析结构体类型（可为多层指针 / 切片 / 数组包装）。
@@ -76,11 +79,17 @@ func (p *Parser) ParseType(typ reflect.Type) (*TypeParser, error) {
 			}
 		}
 	}
+	gqlType, fragName, err := declaredNames(typ)
+	if err != nil {
+		return nil, err
+	}
 	p.types[typ] = &TypeParser{
-		source: typ,
-		Fields: fields,
-		Union:  isUnionType,
-		Reused: 1,
+		source:       typ,
+		Fields:       fields,
+		Union:        isUnionType,
+		Reused:       1,
+		graphQLType:  gqlType,
+		fragmentName: fragName,
 	}
 	return p.types[typ], nil
 }

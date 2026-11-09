@@ -11,11 +11,14 @@ import (
 type FieldParser struct {
 	source     reflect.StructField
 	TypeParser *TypeParser
-	TypeName   string
+	TypeName   string // union 分支 "... on" 使用的类型名：tag 中的 type=X > 结构体 GraphQLType() > Go 类型名（去掉泛型参数）
 	Inline     bool
 	FieldName  string
 	TagValue   *TagValue
 	Directives []*Directive // 字段指令，按书写顺序排列
+
+	typeFlag     string // tag 中的 type=X，未设置时为空
+	fragmentFlag string // tag 中的 fragment=X，未设置时为空
 }
 
 // Arg 包装 tagkit.ArgValue，GraphQLType 为变量的 GraphQL 类型或字面量的自定义类型
@@ -77,13 +80,20 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 			return nil, err
 		}
 	}
-	typeName := fieldType.Name()
-	if tagValue != nil {
-		if f, ok := tagValue.Flag("type"); ok && f.HasValue() {
-			if customType, ok := f.Value.(string); ok && strings.TrimSpace(customType) != "" {
-				typeName = strings.TrimSpace(customType)
-			}
-		}
+	typeFlagValue, err := nameFlag(tagValue, typeFlag)
+	if err != nil {
+		return nil, fmt.Errorf("field [%s]: %w", field.Name, err)
+	}
+	fragmentFlagValue, err := nameFlag(tagValue, fragmentFlag)
+	if err != nil {
+		return nil, fmt.Errorf("field [%s]: %w", field.Name, err)
+	}
+	typeName := goTypeName(fieldType)
+	switch {
+	case typeFlagValue != "":
+		typeName = typeFlagValue
+	case typeParser != nil && typeParser.graphQLType != "":
+		typeName = typeParser.graphQLType
 	}
 
 	var fieldTagValue *TagValue = nil
@@ -113,6 +123,9 @@ func (p *Parser) ParseField(field reflect.StructField) (*FieldParser, error) {
 		TagValue:   fieldTagValue,
 		Inline:     field.Anonymous,
 		Directives: directives,
+
+		typeFlag:     typeFlagValue,
+		fragmentFlag: fragmentFlagValue,
 	}, nil
 }
 

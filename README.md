@@ -64,7 +64,7 @@ query GetData($list_query:String!,$id:Int!) {
 |------|------|
 | 可运行示例（`go doc` 中可见）与基准测试 | [example_test.go](./example_test.go) |
 | 字段、参数、别名、匿名结构体、union、Fragment、边界情况等 | [test/test_graphql](./test/test_graphql)（按文件拆分，长输出位于 `testdata/*.golden`） |
-| `union`、`type=xxx` 等 tag flag | [test/test_flag](./test/test_flag) |
+| `union`、`type=xxx`、`fragment=xxx` 等 tag flag，`GraphQLType()` / `GraphQLFragment()` | [test/test_graphql/naming_test.go](./test/test_graphql/naming_test.go)、[test/test_flag](./test/test_flag) |
 | 常见错误用法 | [test/test_error/common_misuse_test.go](./test/test_error/common_misuse_test.go) |
 | Query 列表/分页/变量默认值 | [test/test_query/discountNodes_test.go](./test/test_query/discountNodes_test.go) |
 | Directives（指令） | [test/test_graphql/directive_test.go](./test/test_graphql/directive_test.go)、[test/test_error/directive_misuse_test.go](./test/test_error/directive_misuse_test.go) |
@@ -93,9 +93,12 @@ go test -run='^$' -bench=. .                                  # 基准测试
     ```go
     YourBranchType `graphql:",type=YourGraphQLTypeName"`
     ```
+  - 也可以让分支结构体实现 `GraphQLType() string`（见 [自定义 Fragment 名与类型条件](#自定义-fragment-名与类型条件)），这样每个 union 里都不用再写 `type=`；嵌入行上的 `type=` 优先级更高。
+  - 泛型结构体作为分支时，`... on` 默认使用去掉类型参数的类型名（`Box[int]` → `Box`）。
 - `graphql:"field(arg1:1,arg2:$,arg3:$value3,...)"`：支持参数，值中 `$` 作为占位符自动生成变量名（`<路径>_<参数名>`，驼峰转下划线），可用 `query:$custom` 指定变量名。参数按 tag 中的书写顺序输出，同一参数不能重复声明；字面量的写法见下方 [参数字面量](#参数字面量)。
 - `graphql:"field(arg:$:Type1,arg2:$varName:Type2)"`：支持为变量指定类型，格式为 `$:Type`（匿名占位符）或 `$varName:Type`（自定义变量名），如 `query:$:String!`、`id:$id:Int!`；可追加默认值 `$first:Int=10`。
 - `graphql:"field,directive='include(if:$show:Boolean!)'"`：为字段添加指令，详见下方 [指令（Directives）](#指令directives)。
+- `graphql:"field,type=User,fragment=UserFields"`：为复用结构体指定 Fragment 的类型条件与名称，适合无法添加方法的第三方类型，详见 [自定义 Fragment 名与类型条件](#自定义-fragment-名与类型条件)。`type=`、`fragment=` 的值必须是合法的 GraphQL 名称（`[_A-Za-z][_0-9A-Za-z]*`，Fragment 名不能是 `on`），否则 `Marshal` 返回错误。
 
 > **字段平铺**：将嵌套结构体的字段平铺到父级，使用 **Go 匿名嵌入** 即可。当前实现中，**仅匿名字段**会作为内联展开；不再依赖单独的 `inline` 标记。匿名嵌入在查询生成与 `encoding/json` 反序列化中均为扁平结构，与常见用法一致。
 
@@ -132,12 +135,51 @@ type Query struct {
 
 ### Fragment 命名
 
-同一个命名结构体在查询中出现多次时会生成 Fragment：
+同一个命名结构体在查询中出现多次时会生成 Fragment（可用 `graphql.WithFragment(false)` 关闭，见 [Marshal 选项](#marshal-选项)）：
 
-- Fragment 名默认为 Go 类型名（首字母大写），**不再带包名前缀**，如 `UserInfo`；类型条件（`on Xxx`）为 Go 类型名，因此请让 Go 类型名与 GraphQL 类型名一致。
+- Fragment 名默认为 Go 类型名（首字母大写），**不再带包名前缀**，如 `UserInfo`；类型条件（`on Xxx`）为 Go 类型名，两者不一致时可实现 `GraphQLType()`，或在字段上写 `type=X`，见下方 [自定义 Fragment 名与类型条件](#自定义-fragment-名与类型条件)；也可以用 `WithFragment(false)` 关闭 Fragment。
 - 泛型类型的 Fragment 名为「类型名_类型参数短名」，如 `Page[Item]` → `Page_Item`、`Pair[string,int]` → `Pair_String_Int`，类型条件为去掉类型参数的 `Page`。
 - 不同类型得到相同的名字时（如不同包下的同名类型），后完成构建的类型追加包名后缀（如 `UserInfo_models`），仍然冲突时继续追加 `_2`、`_3`……；分配顺序固定，结果稳定。
 - 只通过匿名嵌入（字段平铺）复用的类型不会生成 Fragment；union 分支类型如果在别处也被使用，分支内输出为 `... on Type { ...Type }`。
+
+### 自定义 Fragment 名与类型条件
+
+Go 类型名和 Schema 类型名不一致时（如 Go 里叫 `UserDTO`，Schema 里叫 `User`），可以让结构体实现下面的接口（值接收者、指针接收者都可以）：
+
+| 方式 | 作用 | 用在 |
+| --- | --- | --- |
+| `GraphQLType() string`（`graphql.TypeNamer`） | Schema 类型名 | `fragment X on <Type>`、union 分支 `... on <Type>` |
+| `GraphQLFragment() string`（`graphql.FragmentNamer`） | Fragment 名 | `fragment <Name> on ...`、`...<Name>` |
+| 字段 tag `type=X` | 同 `GraphQLType()`，用于无法添加方法的第三方类型 | 同上 |
+| 字段 tag `fragment=X` | 同 `GraphQLFragment()`，用于第三方类型 | 同上 |
+
+```go
+type UserDTO struct {
+	ID   string `json:"id" graphql:"id"`
+	Name string `json:"name" graphql:"name"`
+}
+
+func (UserDTO) GraphQLType() string { return "User" }           // fragment UserDTO on User
+func (UserDTO) GraphQLFragment() string { return "UserFields" } // 可选：fragment UserFields on User
+
+// 第三方类型：在任一引用字段上写 tag 即可
+Author pkg.Account `graphql:"author,type=User,fragment=UserFields"`
+```
+
+规则：
+
+- 返回值会去除首尾空白，空字符串视为未声明；非法名称（如 `bad-name`、`123`、Fragment 名 `on`）返回错误。
+- **union 分支的 `... on <Type>`**：嵌入行上的 `type=X` > 结构体的 `GraphQLType()` > Go 类型名。
+- **Fragment 的类型条件 `on <Type>`**：
+  - 结构体实现了 `GraphQLType()` 时使用它；此时普通字段上的 `type=X` 必须与之一致，否则报错。union 分支上的 `type=X` 只决定 `... on`，可以不同，比如 `GraphQLType()` 返回接口名 `Node`、两个分支分别是 `... on BranchA { ...SharedNode }` 和 `... on BranchB { ...SharedNode }`。
+  - 没有实现时，使用引用该结构体的字段上的 `type=X`：只在一个字段上写，或者多个字段写同一个值都可以；写了不同的值会报错，因为只生成一个 Fragment。此时可以实现 `GraphQLType()`，或者使用 `WithFragment(false)`。
+  - 都没有时使用 Go 类型名。
+- **Fragment 名**：`GraphQLFragment()` > 引用字段上一致的 `fragment=X`（不一致时报错）> 自动生成。
+  - 只实现 `GraphQLType()` 时 Fragment 名仍是 Go 类型名，所以 `UserCardDTO`、`UserDetailDTO` 都映射到 `User` 也不会重名：`fragment UserCardDTO on User`、`fragment UserDetailDTO on User`。
+  - 显式名称保持原样；两个类型显式声明了同一个名字时返回错误。自动生成的名字与显式名字相同时，自动生成的一方追加包名后缀，与字段顺序无关。
+- 使用 `WithFragment(false)` 时不生成 Fragment，不做上述冲突检查，名称合法性校验照常进行。
+
+> **行为变更**：`type=` 的值不是合法 GraphQL 名称（如 `type='bad-type'`、`type=123`）时，以前会原样输出或被忽略，现在返回错误。union 分支用 `type=X` 改了名、又在别处复用时，生成的 Fragment 以前是 `on <Go 类型名>`，现在是 `on X`。
 
 > **行为变更**：旧版本的 Fragment 名为「包名 + 类型名」（如 `Test_graphqlUserInfo`），泛型类型会生成非法名称。Fragment 名只出现在查询内部，不影响响应 JSON 的结构。
 
@@ -195,10 +237,33 @@ query GetUser($id:ID!,$withUser:Boolean=true,$withEmail:Boolean!,$hideFriends:Bo
 - **错误信息**：tag 语法错误统一由 tagkit 报告，格式为 `field [<字段>]: <描述> at position <字节偏移>`，可通过 `errors.As(err, &se)`（`se *tagkit.SyntaxError`）取得出错位置。原来的 `invalid tag "..."`、`参数 x 重复声明` 分别变为 `unterminated string at position N`、`duplicate argument "x" at position N`。
 - **`Arg.Value`**（`core.Arg` 内嵌的 `tagkit.ArgValue`）：列表字面量参数的 `Value` 由渲染后的字符串（如 `"[1,2]"`）改为 `[]interface{}`，`null` 的 `Value` 由字符串 `"null"` 改为 `nil`；需要 GraphQL 写法时请使用 `Arg.Literal`。`Arg.ArgValue` 新增 `Kind`、`Literal`、`Default` 字段。
 
+## Marshal 选项
+
+`Marshal(v any, opts ...graphql.Option)` 支持可选参数，不传时行为与之前完全一致；同一选项传多次时以最后一次为准，传入 `nil` 会被忽略。
+
+| 选项 | 默认值 | 作用 |
+| --- | --- | --- |
+| `graphql.WithFragment(enable bool)` | `true` | 是否把多次引用的命名结构体抽取为顶层 `fragment` |
+| `graphql.WithIndent(val string)` | `SetIndent` 设置的全局缩进（默认两个空格） | 只对本次调用生效的单级缩进 |
+
+```go
+q, err := graphql.Marshal(Query{}, graphql.WithFragment(false), graphql.WithIndent("    "))
+```
+
+**`WithFragment(false)`**：复用的结构体在每个引用处原地展开为 `{ ... }`，`Graphql.Fragments` 为空切片，生成的文档里没有 `fragment` 定义。
+
+- 匿名嵌入的复用结构体照常平铺到父级，不再输出 `...TypeName`。
+- union 分支仍然输出 `... on Type { ... }`，分支内直接展开字段，不再是 `... on Type { ...Type }`。
+- 结构体里的匿名变量（`$:Type`）按每个引用处的实际路径分别命名，如 `$author_avatar_size`、`$others_avatar_size`；具名变量（`$id:ID!`）照常去重，`Paths` 记录所有出现位置。
+- 由于不生成 `fragment ... on Type`，复用的 Go 结构体（如 `UserDTO`）的类型名不需要与服务端 Schema 的类型名一致。
+- 代价是查询文本更长，复用越多越明显。
+
+**`WithIndent(val)`**：覆盖本次调用的缩进（包括 Fragment 的 Body），不修改全局设置，也不影响其他并发或之后的 `Marshal` 调用。`WithIndent("")` 表示不缩进。
+
 ## 输出结构
 - `Graphql.Body`：完整查询体字符串。
 - `Graphql.Variables`：占位符变量列表（`graphql.Variable`：Name 为 `$xxx`，Paths 为出现位置的层级路径，Type 为变量类型如 `String!`、`Int!`，HasDefault/Default 为是否有默认值及其 GraphQL 写法），按首次出现的顺序排列。
-- `Graphql.Fragments`：去重生成的 Fragment 定义（`graphql.Fragment`：Name、Type、Body），按首次使用的顺序排列。
+- `Graphql.Fragments`：去重生成的 Fragment 定义（`graphql.Fragment`：Name、Type、Body），按首次使用的顺序排列；使用 `WithFragment(false)` 时为空切片。
 - `Graphql.Query(name string)`：组装完整的 GraphQL 查询字符串，包含操作声明、变量定义、查询体和 Fragments。
 - `Graphql.Mutation(name string)`：组装完整的 GraphQL 变更字符串，包含操作声明、变量定义、查询体和 Fragments。
 - `Graphql.Subscription(name string)`：组装完整的 GraphQL 订阅字符串，包含操作声明、变量定义、查询体和 Fragments。
@@ -206,7 +271,10 @@ query GetUser($id:ID!,$withUser:Boolean=true,$withEmail:Boolean!,$hideFriends:Bo
 > **输出稳定**：字段参数按 tag 中的书写顺序输出，变量定义按首次出现的顺序输出，Fragment 按首次使用的顺序输出；同一结构体多次生成的结果完全一致，便于快照测试与缓存。
 
 ## 格式化
-默认缩进为两个空格，可通过 `graphql.SetIndent("    ")` 覆盖。`SetIndent` 修改的是全局设置，并发安全；每次 `Marshal` 在开始时读取一次缩进，已经在执行的 `Marshal` 不受影响。
+默认缩进为两个空格，有两种方式修改：
+
+- `graphql.Marshal(v, graphql.WithIndent("    "))`：只对这一次调用生效，优先级最高，推荐使用。
+- `graphql.SetIndent("    ")`：修改全局默认值，对之后所有未传 `WithIndent` 的 `Marshal` 生效。`SetIndent` 并发安全；每次 `Marshal` 在开始时读取一次缩进，已经在执行的 `Marshal` 不受影响。
 
 `Marshal` 本身没有共享状态，可以在多个 goroutine 中并发调用。
 
@@ -215,7 +283,7 @@ query GetUser($id:ID!,$withUser:Boolean=true,$withEmail:Boolean!,$hideFriends:Bo
 - [x] **Arguments（参数）** - 字段参数支持，支持静态值和变量占位符
 - [x] **Aliases（别名）** - 字段别名，使用 `alias=aliasName` 语法
 - [x] **Variables（变量）** - 变量占位符，支持 `$` 匿名占位符和自定义变量名
-- [x] **Fragments（片段）** - 可复用片段，自动生成和去重
+- [x] **Fragments（片段）** - 可复用片段，自动生成和去重，可用 `WithFragment(false)` 关闭
 - [x] **Inline Fragments（内联片段）** - 联合类型支持，使用 `__typename` 字段中的 `union` 标记自动生成
 - [x] **Meta fields（元字段）** - 支持 `__typename` 字段
 - [x] **Operation type and name（操作类型和名称）** - 支持生成完整的操作声明（如 `query GetUser { ... }`），通过 `Query(name)` 方法
